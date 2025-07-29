@@ -1,7 +1,6 @@
 "use client";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef, useCallback } from "react";
 import duration from "dayjs/plugin/duration";
 import Image from "next/image";
@@ -475,7 +474,6 @@ function BookingModal({
   );
 }
 
-export default BookingModal;
 // === END BookingModal Component ===
 
 export default function UserDashboard() {
