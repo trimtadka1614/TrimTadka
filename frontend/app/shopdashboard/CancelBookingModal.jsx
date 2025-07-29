@@ -4,7 +4,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import { XCircleIcon, CheckCircle2Icon, LoaderIcon } from 'lucide-react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
 
 export default function CancelBookingModal({ bookingId, shopId, onCancellationSuccess }) {
     const [showModal, setShowModal] = useState(false);

@@ -44,8 +44,7 @@ dayjs.extend(duration);
 import isSameOrBefore from "dayjs/plugin/isSameOrBefore"; // Import if not already
 
 dayjs.extend(isSameOrBefore);
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
 
 
 function calculateDistance(lat1, lon1, lat2, lon2) {

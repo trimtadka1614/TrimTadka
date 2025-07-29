@@ -17,7 +17,7 @@ import {
 import Image from 'next/image';
 
 // Define API_BASE_URL, ensure it's correctly configured in your environment
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
 
 export default function LoginPage() {
   const [isCustomer, setIsCustomer] = useState(true);

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { XMarkIcon, UserPlusIcon, ScissorsIcon, PhoneIcon, TagIcon, BriefcaseIcon } from '@heroicons/react/24/solid'; // Added BriefcaseIcon for role if needed
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
 
 export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylistRegistered }) {
     const [empName, setEmpName] = useState('');

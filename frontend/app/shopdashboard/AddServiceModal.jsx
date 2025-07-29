@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { XMarkIcon, TagIcon, ClockIcon } from '@heroicons/react/24/solid';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
 
 export default function AddServiceModal({ isOpen, onClose, onServiceAdded }) {
     const [serviceName, setServiceName] = useState('');
