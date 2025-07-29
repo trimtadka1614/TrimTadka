@@ -723,18 +723,17 @@ app.get('/shops/simple', async (req, res) => {
                     '[]'::json
                 ) as services
             FROM shops s
-            LEFT JOIN employees e ON s.shop_id = e.shop_id -- Removed e.is_active filter here to get all employees
+            LEFT JOIN employees e ON s.shop_id = e.shop_id 
             LEFT JOIN employee_services es ON e.emp_id = es.emp_id
             LEFT JOIN services srv ON es.service_id = srv.service_id
-            -- Removed s.is_active = TRUE from WHERE clause to get all shops, active or inactive
             GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, e.emp_id, e.emp_name, e.is_active
             ORDER BY s.shop_name, e.emp_name
         `;
 
-        const shopsResult = await client.query(shopsQuery); // Use client here
+        const shopsResult = await client.query(shopsQuery); 
         
         // Get current and future bookings for queue calculation for all shops
-        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
+        // We fetch all 'booked' and 'in_service' bookings and handle their relevance in the loop
         const bookingsQuery = `
             SELECT 
                 b.booking_id,
@@ -750,11 +749,10 @@ app.get('/shops/simple', async (req, res) => {
             FROM bookings b
             JOIN customers c ON b.customer_id = c.customer_id
             WHERE b.status IN ('booked', 'in_service')
-            AND b.end_time > $1 -- Consider all active bookings whose end time is in the future
             ORDER BY b.join_time ASC
         `;
         
-        const bookingsResult = await client.query(bookingsQuery, [currentTime]); // Use client here
+        const bookingsResult = await client.query(bookingsQuery); 
         const bookings = bookingsResult.rows;
 
         // Group shops data
@@ -766,7 +764,7 @@ app.get('/shops/simple', async (req, res) => {
                     shop_id: row.shop_id,
                     shop_name: row.shop_name,
                     ph_number: row.ph_number,
-                    is_active: row.shop_is_active, // Include shop's active status
+                    is_active: row.shop_is_active, 
                     location: {
                         address: row.address,
                         coordinates: {
@@ -789,30 +787,44 @@ app.get('/shops/simple', async (req, res) => {
                 const inServiceBooking = empBookings.find(b => b.status === 'in_service');
                 
                 // Calculate estimated wait time
-                let finalEstimatedWaitTime = 0;
-                // Start with current time as the reference point for calculating next available slot (in IST)
-                let lastBookingEndTime = dayjs(currentTime).tz(IST_TIMEZONE).toDate(); 
+                const currentTime = dayjs().tz(IST_TIMEZONE); // Get current time in IST
+                let currentBarberFreeTime = dayjs().tz(IST_TIMEZONE); // Initialize with current IST time
 
                 // Sort all active bookings by join_time to process them sequentially
                 const sortedActiveBookings = empBookings
-                    .sort((a, b) => dayjs(a.join_time).tz(IST_TIMEZONE).toDate().getTime() - dayjs(b.join_time).tz(IST_TIMEZONE).toDate().getTime());
+                    .sort((a, b) => dayjs(a.join_time).tz(IST_TIMEZONE).unix() - dayjs(b.join_time).tz(IST_TIMEZONE).unix());
+
+                const bufferMinutes = 5; // Buffer time after each service
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate();
-                    const bookingEndTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate();
+                    const bookingJoinTime = dayjs(booking.join_time).tz(IST_TIMEZONE);
+                    const bookingEndTime = dayjs(booking.end_time).tz(IST_TIMEZONE);
+                    const serviceDuration = booking.service_duration_minutes || 0;
 
                     if (booking.status === 'in_service') {
-                        lastBookingEndTime = dayjs(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
+                        // The barber is currently busy. Their free time will be after this service finishes,
+                        // or at the current time if the service is already overdue.
+                        currentBarberFreeTime = dayjs.max(currentBarberFreeTime, bookingEndTime.add(bufferMinutes, 'minutes'));
                     } else if (booking.status === 'booked') {
-                        const potentialStartTimeAfterPrevious = dayjs(lastBookingEndTime).tz(IST_TIMEZONE).toDate(); 
-                        const actualStartTimeForThisBooking = dayjs(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime())).tz(IST_TIMEZONE).toDate();
-                        
-                        lastBookingEndTime = dayjs(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
+                        // This booking is scheduled. It can only start after the barber is free
+                        // from previous tasks, or at its scheduled join_time, whichever is later.
+                        const actualBookingStartTime = dayjs.max(bookingJoinTime, currentBarberFreeTime);
+                        currentBarberFreeTime = actualBookingStartTime.add(serviceDuration + bufferMinutes, 'minutes');
                     }
                 }
 
-                finalEstimatedWaitTime = Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)));
+                // If after processing all bookings, currentBarberFreeTime is in the past,
+                // it means the barber is currently available.
+                if (currentBarberFreeTime.isBefore(currentTime)) {
+                    currentBarberFreeTime = currentTime;
+                }
+
+                let finalEstimatedWaitTime = Math.ceil(currentBarberFreeTime.diff(currentTime, 'minutes'));
+                // Ensure wait time is not negative (i.e., if barber is already free)
+                if (finalEstimatedWaitTime < 0) {
+                    finalEstimatedWaitTime = 0;
+                }
 
                 // Find customer's booking if customer_id is provided
                 let customerBooking = null;
@@ -824,6 +836,7 @@ app.get('/shops/simple', async (req, res) => {
                     );
                     
                     if (customerBooking) {
+                        // The queue position for the customer's *own* booking
                         customerQueuePosition = sortedActiveBookings.findIndex(b => 
                             b.booking_id === customerBooking.booking_id
                         ) + 1; // +1 because array indices are 0-based
@@ -833,29 +846,30 @@ app.get('/shops/simple', async (req, res) => {
                 const barber = {
                     emp_id: row.emp_id,
                     emp_name: row.emp_name,
-                    is_active: row.emp_is_active, // Include employee's active status
+                    is_active: row.emp_is_active, 
                     services: Array.isArray(row.services) ? row.services : [],
                     queue_info: {
-                        total_people_in_queue: totalInQueue, // Now includes in_service and booked
-                        queue_position: totalInQueue + 1, // Position in the overall active queue for new bookings
+                        total_people_in_queue: totalInQueue, 
+                        // Queue position for a *new* booking (after all current active bookings)
+                        queue_position: totalInQueue + 1, 
                         estimated_wait_time: finalEstimatedWaitTime > 0 ? `${finalEstimatedWaitTime} mins` : "No wait",
                         current_status: inServiceBooking ? 
                             `Serving ${inServiceBooking.customer_name}` : 
-                            (totalInQueue > 0 ? "Ready for next customer" : "Available"),
+                            (totalInQueue > 0 ? "Ready for next customer" : "Available"), // If there are bookings but none in_service, means barber is free or next appointment is soon
                         ...(customerQueuePosition !== null && { customer_queue_position: customerQueuePosition }) // Conditionally add customer's specific queue position
                     }
                 };
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    const joinTime = dayjs(customerBooking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
-                    const endTime = dayjs(customerBooking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
+                    const joinTime = dayjs(customerBooking.join_time).tz(IST_TIMEZONE); 
+                    const expectedEndTimeForCustomer = joinTime.add(customerBooking.service_duration_minutes, 'minutes').tz(IST_TIMEZONE);
                     
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
-                        join_time: dayjs(joinTime).format('HH:mm'),
+                        join_time: joinTime.format('HH:mm'),
                         service_duration: `${customerBooking.service_duration_minutes} mins`,
-                        expected_end_time: dayjs(endTime).format('HH:mm'),
+                        expected_end_time: expectedEndTimeForCustomer.format('HH:mm'),
                         status: customerBooking.status,
                         services: customerBooking.service_type
                     };
@@ -878,7 +892,6 @@ app.get('/shops/simple', async (req, res) => {
                         longitude: shop.location.coordinates.long
                     };
                     
-                    // Ensure haversine function is available (e.g., imported or defined elsewhere)
                     const distance = haversine(userLocation, shopLocation);
                     shop.location.distance_from_you = `${(distance / 1000).toFixed(1)} km`;
                 } else {
@@ -912,8 +925,6 @@ app.get('/shops/simple', async (req, res) => {
         if (client) client.release();
     }
 });
-
-
 // Get shops with detailed barber info & queue status (renamed to /shop_status and changed to POST)
 // Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' and 'haversine' are imported if used.
 // Example imports if not already present:
