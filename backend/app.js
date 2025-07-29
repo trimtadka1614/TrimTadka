@@ -63,7 +63,7 @@ pool.on('error', (err, client) => {
 });
 
 // Test database connection with better error handling
-pool.connect((err, client, release) => {
+pool.connect(async (err, client, release) => { // Made async to use await
     if (err) {
         // Provide more specific guidance for ETIMEDOUT errors
         if (err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND') {
@@ -76,8 +76,14 @@ pool.connect((err, client, release) => {
         }
         return console.error('Error acquiring client:', err.stack);
     }
-    console.log('Successfully connected to the database!');
-    release(); // Release the client back to the pool
+    try {
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this test connection
+        console.log('Successfully connected to the database and set timezone to IST!');
+    } catch (tzErr) {
+        console.error('Error setting time zone on initial connection:', tzErr);
+    } finally {
+        release(); // Release the client back to the pool
+    }
 });
 
 // Secret key for JWT token generation.
@@ -332,7 +338,7 @@ app.post('/shop/unsubscribe', async (req, res) => {
 
     try {
         const result = await pool.query(
-            `DELETE FROM shop_push_subscriptions WHERE shop_id = $1`,
+            `DELETE FROM push_subscriptions WHERE shop_id = $1`,
             [shopId]
         );
 
@@ -618,8 +624,12 @@ app.get('/myshop/:shop_id', async (req, res) => {
         return res.status(400).json({ message: 'Shop ID is required.' });
     }
 
+    let client;
     try {
-        const result = await pool.query(
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
+        const result = await client.query(
             'SELECT shop_id, shop_name, lat, long, address, ph_number, is_active FROM shops WHERE shop_id = $1',
             [shopId]
         );
@@ -646,12 +656,18 @@ app.get('/myshop/:shop_id', async (req, res) => {
     } catch (error) {
         console.error('Error retrieving shop details:', error);
         res.status(500).json({ message: 'Internal server error while fetching shop details.' });
+    } finally {
+        if (client) client.release();
     }
 });
 // Get all active shops (public route)
 app.get('/shops', async (req, res) => {
+    let client;
     try {
-        const result = await pool.query(
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
+        const result = await client.query(
             'SELECT shop_id, shop_name, lat, long, address, ph_number FROM shops WHERE is_active = true ORDER BY shop_name'
         );
 
@@ -664,6 +680,8 @@ app.get('/shops', async (req, res) => {
     } catch (error) {
         console.error('Error fetching shops:', error);
         res.status(500).json({ message: 'Internal server error while fetching shops.' });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -677,7 +695,11 @@ app.get('/shops', async (req, res) => {
 app.get('/shops/simple', async (req, res) => {
     const { customer_id, lat, long } = req.query; // Parameters come from query for GET request
 
+    let client;
     try {
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
         // Base query to get shops with barbers and their services
         // Modified to include is_active status for both shops and employees
         const shopsQuery = `
@@ -715,7 +737,7 @@ app.get('/shops/simple', async (req, res) => {
             ORDER BY s.shop_name, e.emp_name
         `;
 
-        const shopsResult = await pool.query(shopsQuery);
+        const shopsResult = await client.query(shopsQuery); // Use client here
         
         // Get current and future bookings for queue calculation for all shops
         const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
@@ -738,7 +760,7 @@ app.get('/shops/simple', async (req, res) => {
             ORDER BY b.join_time ASC
         `;
         
-        const bookingsResult = await pool.query(bookingsQuery, [currentTime]);
+        const bookingsResult = await client.query(bookingsQuery, [currentTime]); // Use client here
         const bookings = bookingsResult.rows;
 
         // Group shops data
@@ -892,6 +914,8 @@ app.get('/shops/simple', async (req, res) => {
             error: 'Server error while fetching shops with barber details',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -905,7 +929,11 @@ app.get('/shops/simple', async (req, res) => {
 app.post('/shop_status', async (req, res) => {
     const { customer_id, lat, long, shop_id } = req.body; // shop_id now comes from body
 
+    let client;
     try {
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
         // Validate shop_id as it's now a primary filter for this route
         if (!shop_id || !Number.isInteger(parseInt(shop_id))) {
             return res.status(400).json({ error: 'shop_id is required and must be a positive integer in the request body.' });
@@ -950,7 +978,7 @@ app.post('/shop_status', async (req, res) => {
             ORDER BY s.shop_name, e.emp_name
         `;
 
-        const shopsResult = await pool.query(shopsQuery, [parsedShopId]); // Pass shop_id as parameter
+        const shopsResult = await client.query(shopsQuery, [parsedShopId]); // Pass shop_id as parameter
 
         if (shopsResult.rows.length === 0) {
             return res.status(404).json({ message: 'Shop not found.' });
@@ -978,7 +1006,7 @@ app.post('/shop_status', async (req, res) => {
             ORDER BY b.join_time ASC
         `;
         
-        const bookingsResult = await pool.query(bookingsQuery, [parsedShopId, currentTime]); // Pass shop_id and currentTime
+        const bookingsResult = await client.query(bookingsQuery, [parsedShopId, currentTime]); // Pass shop_id and currentTime
         const bookings = bookingsResult.rows;
 
         // Group shops data (will only be one shop due to shop_id filter)
@@ -1132,6 +1160,8 @@ app.post('/shop_status', async (req, res) => {
             error: 'Server error while fetching shops with barber details',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -1160,8 +1190,12 @@ app.post('/register_service', async (req, res) => {
         });
     }
 
+    let client;
     try {
-        const result = await pool.query(
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
+        const result = await client.query(
             `INSERT INTO services (service_name, service_duration_minutes)
              VALUES ($1, $2) RETURNING *`,
             [service_name.trim(), service_duration_minutes]
@@ -1181,13 +1215,19 @@ app.post('/register_service', async (req, res) => {
         res.status(500).json({ 
             error: 'Server error while registering service.' 
         });
+    } finally {
+        if (client) client.release();
     }
 });
 
 // Get all available services
 app.get('/services', async (req, res) => {
+    let client;
     try {
-        const result = await pool.query(
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
+        const result = await client.query(
             'SELECT * FROM services ORDER BY service_name'
         );
 
@@ -1201,6 +1241,8 @@ app.get('/services', async (req, res) => {
         res.status(500).json({ 
             error: 'Server error while fetching services.' 
         });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -1254,6 +1296,7 @@ app.post('/register_employee', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this transaction
         
         // Check shop existence and if it's active
         const shop = await client.query(
@@ -1369,8 +1412,12 @@ app.get('/shops/:shop_id/employees', async (req, res) => {
         });
     }
 
+    let client;
     try {
-        const result = await pool.query(`
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
+        const result = await client.query(`
             SELECT
                 e.*,
                 array_agg(
@@ -1398,6 +1445,8 @@ app.get('/shops/:shop_id/employees', async (req, res) => {
         res.status(500).json({
             error: 'Server error while fetching employees.'
         });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -1409,6 +1458,8 @@ async function updateBookingStatuses() {
     let client;
     try {
         client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this background task
+
         await client.query('BEGIN'); // Start transaction
 
         const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
@@ -1575,6 +1626,8 @@ app.post('/bookings', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this transaction
+
         await updateBookingStatuses(client); // Ensure statuses are fresh
 
         const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Current time in IST
@@ -1797,6 +1850,7 @@ app.post('/bookings/cancel', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this transaction
 
         // 2. Verify Ownership and Status
         // FOR UPDATE locks the row to prevent race conditions during cancellation
@@ -1896,6 +1950,7 @@ app.post('/shop/bookings/cancel', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this transaction
 
         // 2. Verify Shop Ownership of the Barber and Booking Status
         const bookingCheck = await client.query(
@@ -1987,6 +2042,8 @@ app.post('/shop/bookings/cancel', async (req, res) => {
 // as provided in the previous turn.
 
 async function updateSubsequentBookings(client, empId, cancelledBookingOriginalEndTime, cancelledServiceDurationMinutes, shopId) {
+    await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this helper function
+
     const subsequentBookingsQuery = `
         SELECT booking_id, customer_id, join_time, end_time, service_duration_minutes, status
         FROM bookings
@@ -2129,7 +2186,11 @@ app.post('/getBookingsbycustomer', async (req, res) => {
     const sortBy = validSortFields.includes(sort_by) ? sort_by : 'join_time';
     const sortOrder = validSortOrders.includes(sort_order?.toUpperCase()) ? sort_order.toUpperCase() : 'DESC';
 
+    let client;
     try {
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
         // Define currentTime at the beginning of the route handler for consistent time calculations
         const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
 
@@ -2205,7 +2266,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         queryParams.push(offsetNum);
 
         // Execute the main query to get the bookings
-        const result = await pool.query(query, queryParams);
+        const result = await client.query(query, queryParams); // Use client here
 
         // --- Get total count for pagination (using the same filters) ---
         let countQuery = `
@@ -2248,7 +2309,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         }
 
         // Execute the count query to get the total number of records matching the filters
-        const countResult = await pool.query(countQuery, countParams);
+        const countResult = await client.query(countQuery, countParams); // Use client here
         const totalCount = parseInt(countResult.rows[0].total);
 
         // Process and format each booking's data for the response
@@ -2322,7 +2383,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         statusSummaryQuery += ` GROUP BY status`;
 
         // Execute the status summary query
-        const statusSummary = await pool.query(statusSummaryQuery, statusSummaryParams);
+        const statusSummary = await client.query(statusSummaryQuery, statusSummaryParams); // Use client here
 
         // Convert the status summary rows into a more accessible object format
         const statusCounts = statusSummary.rows.reduce((acc, row) => {
@@ -2369,6 +2430,8 @@ app.post('/getBookingsbycustomer', async (req, res) => {
             // Provide more details in development environment for easier debugging
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -2397,7 +2460,11 @@ app.post('/getAllBookings', async (req, res) => {
     const sortBy = validSortFields.includes(sort_by) ? sort_by : 'join_time';
     const sortOrder = validSortOrders.includes(sort_order?.toUpperCase()) ? sort_order.toUpperCase() : 'DESC';
 
+    let client;
     try {
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
         // Define currentTime at the beginning of the route handler
         const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
 
@@ -2477,7 +2544,7 @@ app.post('/getAllBookings', async (req, res) => {
         queryParams.push(offsetNum);
 
         // Execute main query
-        const result = await pool.query(query, queryParams);
+        const result = await client.query(query, queryParams); // Use client here
 
         // Get total count for pagination (using the same filters)
         let countQuery = `
@@ -2525,7 +2592,7 @@ app.post('/getAllBookings', async (req, res) => {
             paramIndex++;
         }
 
-        const countResult = await pool.query(countQuery, countParams);
+        const countResult = await client.query(countQuery, countParams); // Use client here
         const totalCount = parseInt(countResult.rows[0].total);
 
         // Process and format booking data
@@ -2604,7 +2671,7 @@ app.post('/getAllBookings', async (req, res) => {
         statusSummaryQuery += ` GROUP BY status`;
 
 
-        const statusSummary = await pool.query(statusSummaryQuery, statusSummaryParams);
+        const statusSummary = await client.query(statusSummaryQuery, statusSummaryParams); // Use client here
 
         const statusCounts = statusSummary.rows.reduce((acc, row) => {
             acc[row.status] = parseInt(row.count);
@@ -2646,6 +2713,8 @@ app.post('/getAllBookings', async (req, res) => {
             error: 'Server error while fetching bookings',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -2663,9 +2732,13 @@ app.put('/shops/:shop_id/status', async (req, res) => {
         return res.status(400).json({ error: 'is_active must be a boolean (true/false).' });
     }
 
+    let client;
     try {
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
         // Update the 'is_active' status for the specified shop_id
-        const result = await pool.query(
+        const result = await client.query(
             `UPDATE shops SET is_active = $1 WHERE shop_id = $2 RETURNING *`,
             [is_active, parseInt(shop_id)]
         );
@@ -2685,6 +2758,8 @@ app.put('/shops/:shop_id/status', async (req, res) => {
         console.error('Error updating shop status:', error);
         // Return a generic server error
         res.status(500).json({ error: 'Server error while updating shop status.' });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -2704,8 +2779,12 @@ app.put('/employees/:emp_id/status', async (req, res) => {
         return res.status(400).json({ error: 'is_active must be a boolean (true/false).' });
     }
 
+    let client;
     try {
-        const result = await pool.query(
+        client = await pool.connect();
+        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+
+        const result = await client.query(
             `UPDATE employees SET is_active = $1 WHERE emp_id = $2 RETURNING *`,
             [is_active, parseInt(emp_id)]
         );
@@ -2721,6 +2800,8 @@ app.put('/employees/:emp_id/status', async (req, res) => {
     } catch (error) {
         console.error('Error updating employee status:', error);
         res.status(500).json({ error: 'Server error while updating employee status.' });
+    } finally {
+        if (client) client.release();
     }
 });
 
