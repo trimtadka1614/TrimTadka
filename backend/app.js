@@ -788,12 +788,12 @@ app.get('/shops/simple', async (req, res) => {
 
                 // Sort all active bookings by join_time to process them sequentially
                 const sortedActiveBookings = empBookings
-                    .sort((a, b) => dayjs(a.join_time).utc().toDate().getTime() - dayjs(b.join_time).utc().toDate().getTime());
+                    .sort((a, b) => dayjs.utc(a.join_time).toDate().getTime() - dayjs.utc(b.join_time).toDate().getTime()); // Parse as UTC
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = dayjs(booking.join_time).utc().toDate();
-                    const bookingEndTime = dayjs(booking.end_time).utc().toDate();
+                    const bookingJoinTime = dayjs.utc(booking.join_time).toDate(); // Parse as UTC
+                    const bookingEndTime = dayjs.utc(booking.end_time).toDate(); // Parse as UTC
 
                     if (booking.status === 'in_service') {
                         lastBookingEndTime = new Date(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)); // Add 5 min buffer
@@ -841,9 +841,9 @@ app.get('/shops/simple', async (req, res) => {
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    // Convert to IST for display
-                    const joinTimeIST = dayjs(customerBooking.join_time).tz('Asia/Kolkata');
-                    const endTimeIST = dayjs(customerBooking.end_time).tz('Asia/Kolkata');
+                    // Treat fetched times as UTC and convert to IST for display
+                    const joinTimeIST = dayjs.utc(customerBooking.join_time).tz('Asia/Kolkata');
+                    const endTimeIST = dayjs.utc(customerBooking.end_time).tz('Asia/Kolkata');
                     
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
@@ -1030,12 +1030,12 @@ app.post('/shop_status', async (req, res) => {
 
                 // Sort all active bookings by join_time to process them sequentially
                 const sortedActiveBookings = empBookings
-                    .sort((a, b) => dayjs(a.join_time).utc().toDate().getTime() - dayjs(b.join_time).utc().toDate().getTime());
+                    .sort((a, b) => dayjs.utc(a.join_time).toDate().getTime() - dayjs.utc(b.join_time).toDate().getTime()); // Parse as UTC
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = dayjs(booking.join_time).utc().toDate();
-                    const bookingEndTime = dayjs(booking.end_time).utc().toDate();
+                    const bookingJoinTime = dayjs.utc(booking.join_time).toDate(); // Parse as UTC
+                    const bookingEndTime = dayjs.utc(booking.end_time).toDate(); // Parse as UTC
 
                     if (booking.status === 'in_service') {
                         lastBookingEndTime = new Date(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)); // Add 5 min buffer
@@ -1083,9 +1083,9 @@ app.post('/shop_status', async (req, res) => {
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    // Convert to IST for display
-                    const joinTimeIST = dayjs(customerBooking.join_time).tz('Asia/Kolkata');
-                    const endTimeIST = dayjs(customerBooking.end_time).tz('Asia/Kolkata');
+                    // Treat fetched times as UTC and convert to IST for display
+                    const joinTimeIST = dayjs.utc(customerBooking.join_time).tz('Asia/Kolkata');
+                    const endTimeIST = dayjs.utc(customerBooking.end_time).tz('Asia/Kolkata');
                     
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
@@ -1653,14 +1653,14 @@ app.post('/bookings', async (req, res) => {
         // 3. Iterate through existing bookings to find a gap
         // If there's an 'in_service' booking, the slot can't start before its end time
         if (activeBookings.rows.length > 0 && activeBookings.rows[0].status === 'in_service') {
-            potentialSlotStart = new Date(Math.max(potentialSlotStart.getTime(), dayjs(activeBookings.rows[0].end_time).utc().toDate().getTime() + bufferTimeMs));
+            potentialSlotStart = new Date(Math.max(potentialSlotStart.getTime(), dayjs.utc(activeBookings.rows[0].end_time).toDate().getTime() + bufferTimeMs)); // Parse as UTC
         }
 
         // Now iterate through the rest of the queue to find gaps
         for (let i = 0; i < activeBookings.rows.length; i++) {
             const currentBooking = activeBookings.rows[i];
-            const currentBookingStartTime = dayjs(currentBooking.join_time).utc().toDate();
-            const currentBookingEndTime = dayjs(currentBooking.end_time).utc().toDate();
+            const currentBookingStartTime = dayjs.utc(currentBooking.join_time).toDate(); // Parse as UTC
+            const currentBookingEndTime = dayjs.utc(currentBooking.end_time).toDate();   // Parse as UTC
 
             // Check the gap *before* the current booking
             // The gap must be large enough to accommodate the new booking + buffer
@@ -1853,7 +1853,7 @@ app.post('/bookings/cancel', async (req, res) => {
         // We only adjust if the cancelled booking was actually 'booked' or 'in_service'
         if (bookingToCancel.status === 'booked' || bookingToCancel.status === 'in_service') {
             // Pass the UTC end_time for calculation
-            await updateSubsequentBookings(client, emp_id, dayjs(end_time).utc().toDate(), service_duration_minutes, shop_id); // Pass shop_id
+            await updateSubsequentBookings(client, emp_id, dayjs.utc(end_time).toDate(), service_duration_minutes, shop_id); // Parse as UTC
         }
 
         // Notify Shop about customer cancellation
@@ -1865,7 +1865,7 @@ app.post('/bookings/cancel', async (req, res) => {
 
             await sendNotificationToShop(shop_id, {
                 title: 'Booking Cancelled by Customer!',
-                body: `Booking (ID: ${booking_id}) with ${empName} for ${customerName} at ${dayjs(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the customer.`, // Formatted in IST
+                body: `Booking (ID: ${booking_id}) with ${empName} for ${customerName} at ${dayjs.utc(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the customer.`, // Formatted in IST
                 url: `/shop/dashboard?bookingId=${booking_id}`,
                 bookingId: booking_id,
                 type: 'shop_booking_customer_cancelled',
@@ -1879,8 +1879,8 @@ app.post('/bookings/cancel', async (req, res) => {
             cancelled_booking: {
                 booking_id: cancelledBooking.booking_id,
                 status: cancelledBooking.status,
-                original_join_time: dayjs(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'), // Formatted in IST
-                original_end_time: dayjs(end_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss') // Formatted in IST
+                original_join_time: dayjs.utc(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'), // Formatted in IST
+                original_end_time: dayjs.utc(end_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss') // Formatted in IST
             }
         });
 
@@ -1952,14 +1952,14 @@ app.post('/shop/bookings/cancel', async (req, res) => {
         // 4. Re-evaluate Queue for subsequent bookings
         if (bookingToCancel.status === 'booked' || bookingToCancel.status === 'in_service') {
             // Pass the UTC end_time for calculation
-            await updateSubsequentBookings(client, emp_id, dayjs(end_time).utc().toDate(), service_duration_minutes, shop_id); // Pass shop_id
+            await updateSubsequentBookings(client, emp_id, dayjs.utc(end_time).toDate(), service_duration_minutes, shop_id); // Parse as UTC
         }
 
         // 5. Send Notification to Customer about Cancellation
         if (customer_id) {
             const notificationPayload = {
                 title: 'Booking Cancelled!',
-                body: `Your booking (ID: ${booking_id}) on ${dayjs(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD')} at ${dayjs(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the shop.`, // Formatted in IST
+                body: `Your booking (ID: ${booking_id}) on ${dayjs.utc(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD')} at ${dayjs.utc(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the shop.`, // Formatted in IST
                 url: `/dashboard?bookingId=${booking_id}`, // Link to customer's dashboard or specific booking
                 bookingId: booking_id,
                 type: 'booking_cancelled', // Custom type for client-side handling
@@ -1972,7 +1972,7 @@ app.post('/shop/bookings/cancel', async (req, res) => {
         if (shop_id) {
             await sendNotificationToShop(shop_id, {
                 title: 'Booking Successfully Cancelled!',
-                body: `You have successfully cancelled booking (ID: ${booking_id}) for ${dayjs(join_time).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
+                body: `You have successfully cancelled booking (ID: ${booking_id}) for ${dayjs.utc(join_time).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
                 url: `/shop/dashboard?bookingId=${booking_id}`,
                 bookingId: booking_id,
                 type: 'shop_booking_self_cancelled',
@@ -1986,8 +1986,8 @@ app.post('/shop/bookings/cancel', async (req, res) => {
             cancelled_booking: {
                 booking_id: cancelledBooking.booking_id,
                 status: cancelledBooking.status,
-                original_join_time: dayjs(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'), // Formatted in IST
-                original_end_time: dayjs(end_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss') // Formatted in IST
+                original_join_time: dayjs.utc(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'), // Formatted in IST
+                original_end_time: dayjs.utc(end_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss') // Formatted in IST
             }
         });
 
@@ -2040,7 +2040,7 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
 
     if (precedingBookingQuery.rowCount > 0) {
         // Treat fetched end_time as UTC for calculation
-        effectivePreviousEndTime = dayjs(precedingBookingQuery.rows[0].end_time).utc().toDate().getTime();
+        effectivePreviousEndTime = dayjs.utc(precedingBookingQuery.rows[0].end_time).toDate().getTime(); // Parse as UTC
     } else {
         effectivePreviousEndTime = currentTime.getTime();
     }
@@ -2050,8 +2050,8 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
 
     for (const booking of subsequentBookings) {
         // Treat fetched join_time and end_time as UTC for calculation
-        const originalJoinTime = dayjs(booking.join_time).utc().toDate();
-        const originalEndTime = dayjs(booking.end_time).utc().toDate();
+        const originalJoinTime = dayjs.utc(booking.join_time).toDate(); // Parse as UTC
+        const originalEndTime = dayjs.utc(booking.end_time).toDate(); // Parse as UTC
         const customerId = booking.customer_id;
 
         const originalEstimatedWaitTime = Math.max(0, Math.ceil((originalJoinTime.getTime() - currentTime.getTime()) / (1000 * 60)));
@@ -2075,7 +2075,7 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
                  WHERE booking_id = $3`,
                 [newJoinTimeUTC, newEndTimeUTC, booking.booking_id] // Use UTC Date objects for update
             );
-            console.log(`Updated booking ${booking.booking_id}: Old join_time: ${dayjs(originalJoinTime).tz('Asia/Kolkata').format('HH:mm')}, New join_time ${dayjs(newJoinTime).tz('Asia/Kolkata').format('HH:mm')}`); // Log in IST
+            console.log(`Updated booking ${booking.booking_id}: Old join_time: ${dayjs.utc(originalJoinTime).tz('Asia/Kolkata').format('HH:mm')}, New join_time ${dayjs.utc(newJoinTime).tz('Asia/Kolkata').format('HH:mm')}`); // Log in IST
 
             // Notify Customer about time shift
             if (customerId) {
@@ -2085,7 +2085,7 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
                 if (timeDifference >= 5) { // Notify if shifted by 5 minutes or more
                     notificationPayload = {
                         title: 'Booking Time Shifted!',
-                        body: `Your booking (ID: ${booking.booking_id}) is now scheduled ${timeDifference} minutes earlier. New start time: ${dayjs(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
+                        body: `Your booking (ID: ${booking.booking_id}) is now scheduled ${timeDifference} minutes earlier. New start time: ${dayjs.utc(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
                         url: `/dashboard?bookingId=${booking.booking_id}`,
                         bookingId: booking.booking_id,
                         type: 'time_shift',
@@ -2116,7 +2116,7 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
 
                 await sendNotificationToShop(shopId, {
                     title: 'Queue Updated!',
-                    body: `Booking (ID: ${booking.booking_id}) for ${customerName} with ${empName} has been shifted. New start time: ${dayjs(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
+                    body: `Booking (ID: ${booking.booking_id}) for ${customerName} with ${empName} has been shifted. New start time: ${dayjs.utc(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
                     url: `/shop/dashboard?bookingId=${booking.booking_id}`,
                     bookingId: booking.booking_id,
                     type: 'shop_queue_update',
@@ -2283,8 +2283,8 @@ app.post('/getBookingsbycustomer', async (req, res) => {
             let timeInfo = {}; // Object to hold time-related display information
             
             // Treat fetched times as UTC and convert to IST for display
-            const joinTime = dayjs(booking.join_time).tz('Asia/Kolkata');
-            const endTime = dayjs(booking.end_time).tz('Asia/Kolkata');
+            const joinTime = dayjs.utc(booking.join_time).tz('Asia/Kolkata');
+            const endTime = dayjs.utc(booking.end_time).tz('Asia/Kolkata');
 
             // Populate timeInfo based on the booking status
             if (booking.status === 'booked') {
@@ -2562,8 +2562,8 @@ app.post('/getAllBookings', async (req, res) => {
             // Calculate time information based on status
             let timeInfo = {};
             // Treat fetched times as UTC and convert to IST for display
-            const joinTime = dayjs(booking.join_time).tz('Asia/Kolkata');
-            const endTime = dayjs(booking.end_time).tz('Asia/Kolkata');
+            const joinTime = dayjs.utc(booking.join_time).tz('Asia/Kolkata');
+            const endTime = dayjs.utc(booking.end_time).tz('Asia/Kolkata');
 
             if (booking.status === 'booked') {
                 const timeUntilStart = Math.max(0, Math.ceil((joinTime.toDate().getTime() - dayjs().tz('Asia/Kolkata').toDate().getTime()) / (1000 * 60)));
