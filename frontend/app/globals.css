@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+/* Your existing theme inline */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Your existing dark mode media query */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+/* Your existing body styles */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Custom Blob Animation for background */
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* Custom Scrollbar */
+.custom-scroll::-webkit-scrollbar {
+  height: 4px;
+  
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background-color: #cb3a1e;
+  
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: #a52c17;
+}
