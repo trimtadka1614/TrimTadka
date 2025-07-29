@@ -165,191 +165,191 @@ function SearchBar({ searchQuery, setSearchQuery }) {
   );
 }
 // === END SearchBar component ===
-const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
-  const [progress, setProgress] = useState(0);
-  const [showProgressBar, setShowProgressBar] = useState(true);
-  const [debugInfo, setDebugInfo] = useState({});
-  const rafRef = useRef(null);
-  const isActiveRef = useRef(true);
-  const lastUpdateRef = useRef(0);
+// const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
+//   const [progress, setProgress] = useState(0);
+//   const [showProgressBar, setShowProgressBar] = useState(true);
+//   const [debugInfo, setDebugInfo] = useState({});
+//   const rafRef = useRef(null);
+//   const isActiveRef = useRef(true);
+//   const lastUpdateRef = useRef(0);
 
-  useEffect(() => {
-    if (!estimatedStartTime || estimatedStartTime.trim() === "") {
-      setShowProgressBar(false);
-      setProgress(0);
-      return;
-    }
+//   useEffect(() => {
+//     if (!estimatedStartTime || estimatedStartTime.trim() === "") {
+//       setShowProgressBar(false);
+//       setProgress(0);
+//       return;
+//     }
 
-    setShowProgressBar(true);
+//     setShowProgressBar(true);
 
-    console.log("🔍 === TIMEZONE FIXED LOGIC START ===");
-    console.log("📱 User Agent:", navigator.userAgent);
-    console.log("🌍 Timezone:", Intl.DateTimeFormat().resolvedOptions().timeZone);
-    console.log("⏰ Estimated Start Time Input:", estimatedStartTime);
-    console.log("⏰ Join Time Input (UTC):", joinTime);
+//     console.log("🔍 === TIMEZONE FIXED LOGIC START ===");
+//     console.log("📱 User Agent:", navigator.userAgent);
+//     console.log("🌍 Timezone:", Intl.DateTimeFormat().resolvedOptions().timeZone);
+//     console.log("⏰ Estimated Start Time Input:", estimatedStartTime);
+//     console.log("⏰ Join Time Input (UTC):", joinTime);
 
-    // TIMEZONE FIX: Convert joinTime from UTC to local timezone (IST)
-    const joinTimeLocal = dayjs(joinTime); // dayjs automatically converts to local timezone
-    const joinTimeIST = joinTimeLocal.format("YYYY-MM-DD HH:mm:ss");
-    console.log("⏰ Join Time (Local/IST):", joinTimeIST);
-    console.log("⏰ Join Time Unix:", joinTimeLocal.unix());
+//     // TIMEZONE FIX: Convert joinTime from UTC to local timezone (IST)
+//     const joinTimeLocal = dayjs(joinTime); // dayjs automatically converts to local timezone
+//     const joinTimeIST = joinTimeLocal.format("YYYY-MM-DD HH:mm:ss");
+//     console.log("⏰ Join Time (Local/IST):", joinTimeIST);
+//     console.log("⏰ Join Time Unix:", joinTimeLocal.unix());
 
-    const [hourStr, minuteStrPart] = estimatedStartTime.split(":");
-    const [minuteStr, meridian] = minuteStrPart.split(" ");
-    let hour = parseInt(hourStr, 10);
-    const minute = parseInt(minuteStr, 10);
+//     const [hourStr, minuteStrPart] = estimatedStartTime.split(":");
+//     const [minuteStr, meridian] = minuteStrPart.split(" ");
+//     let hour = parseInt(hourStr, 10);
+//     const minute = parseInt(minuteStr, 10);
 
-    if (meridian === "PM" && hour !== 12) {
-      hour += 12;
-    } else if (meridian === "AM" && hour === 12) {
-      hour = 0;
-    }
+//     if (meridian === "PM" && hour !== 12) {
+//       hour += 12;
+//     } else if (meridian === "AM" && hour === 12) {
+//       hour = 0;
+//     }
 
-    // Use the converted joinTime as the start reference instead of "now"
-    const startTime = joinTimeLocal; // This is when the user joined (in local time)
-    const now = dayjs(); // Current time
+//     // Use the converted joinTime as the start reference instead of "now"
+//     const startTime = joinTimeLocal; // This is when the user joined (in local time)
+//     const now = dayjs(); // Current time
     
-    console.log("🚀 Start Time (when joined):", startTime.format("YYYY-MM-DD HH:mm:ss"));
-    console.log("⏰ Current time:", now.format("YYYY-MM-DD HH:mm:ss"));
+//     console.log("🚀 Start Time (when joined):", startTime.format("YYYY-MM-DD HH:mm:ss"));
+//     console.log("⏰ Current time:", now.format("YYYY-MM-DD HH:mm:ss"));
 
-    // Create end time based on the same date as joinTime (not current date)
-    let end = startTime.hour(hour).minute(minute).second(0).millisecond(0);
-    console.log("🎯 End time (same day as join):", end.format("YYYY-MM-DD HH:mm:ss"));
+//     // Create end time based on the same date as joinTime (not current date)
+//     let end = startTime.hour(hour).minute(minute).second(0).millisecond(0);
+//     console.log("🎯 End time (same day as join):", end.format("YYYY-MM-DD HH:mm:ss"));
 
-    // Check if we need to move to next day based on join time, not current time
-    if (end.isBefore(startTime) || end.isSame(startTime)) {
-      end = end.add(1, "day");
-      console.log("📅 End time adjusted to NEXT day:", end.format("YYYY-MM-DD HH:mm:ss"));
-    }
+//     // Check if we need to move to next day based on join time, not current time
+//     if (end.isBefore(startTime) || end.isSame(startTime)) {
+//       end = end.add(1, "day");
+//       console.log("📅 End time adjusted to NEXT day:", end.format("YYYY-MM-DD HH:mm:ss"));
+//     }
 
-    // Calculate total duration from join time to end time
-    const totalDurationFromJoin = end.diff(startTime, "second");
-    console.log("⏱️ Total Duration (from join to end):", totalDurationFromJoin, "seconds");
-    console.log("📊 Duration in hours:", (totalDurationFromJoin / 3600).toFixed(2));
+//     // Calculate total duration from join time to end time
+//     const totalDurationFromJoin = end.diff(startTime, "second");
+//     console.log("⏱️ Total Duration (from join to end):", totalDurationFromJoin, "seconds");
+//     console.log("📊 Duration in hours:", (totalDurationFromJoin / 3600).toFixed(2));
 
-    // Calculate elapsed time since joining
-    const elapsedSinceJoin = now.diff(startTime, "second");
-    console.log("⏳ Elapsed since join:", elapsedSinceJoin, "seconds");
+//     // Calculate elapsed time since joining
+//     const elapsedSinceJoin = now.diff(startTime, "second");
+//     console.log("⏳ Elapsed since join:", elapsedSinceJoin, "seconds");
 
-    if (totalDurationFromJoin <= 0) {
-      console.warn("⚠️ Invalid duration calculation");
-      setProgress(100);
-      setDebugInfo({
-        joinTimeLocal: joinTimeIST,
-        currentTime: now.format("HH:mm:ss"),
-        targetTime: end.format("HH:mm:ss"),
-        remainingTime: 0,
-        totalDuration: 0,
-        percentage: "100.000000",
-        status: "Invalid duration"
-      });
-      return () => {};
-    }
+//     if (totalDurationFromJoin <= 0) {
+//       console.warn("⚠️ Invalid duration calculation");
+//       setProgress(100);
+//       setDebugInfo({
+//         joinTimeLocal: joinTimeIST,
+//         currentTime: now.format("HH:mm:ss"),
+//         targetTime: end.format("HH:mm:ss"),
+//         remainingTime: 0,
+//         totalDuration: 0,
+//         percentage: "100.000000",
+//         status: "Invalid duration"
+//       });
+//       return () => {};
+//     }
 
-    const animate = (timestamp) => {
-      if (!isActiveRef.current) return;
+//     const animate = (timestamp) => {
+//       if (!isActiveRef.current) return;
 
-      if (timestamp - lastUpdateRef.current >= 1000) {
-        const currentTime = dayjs();
-        const elapsedTime = currentTime.diff(startTime, "second");
+//       if (timestamp - lastUpdateRef.current >= 1000) {
+//         const currentTime = dayjs();
+//         const elapsedTime = currentTime.diff(startTime, "second");
         
-        // Calculate progress based on elapsed time since joining
-        const percentage = Math.max(
-          0,
-          Math.min((elapsedTime / totalDurationFromJoin) * 100, 100)
-        );
+//         // Calculate progress based on elapsed time since joining
+//         const percentage = Math.max(
+//           0,
+//           Math.min((elapsedTime / totalDurationFromJoin) * 100, 100)
+//         );
 
-        const remainingTime = Math.max(0, totalDurationFromJoin - elapsedTime);
+//         const remainingTime = Math.max(0, totalDurationFromJoin - elapsedTime);
 
-        console.log("🔄 Current:", currentTime.format("HH:mm:ss"));
-        console.log("🚀 Started:", startTime.format("HH:mm:ss"));
-        console.log("🎯 Target:", end.format("HH:mm:ss"));
-        console.log("⏳ Elapsed since join:", elapsedTime, "seconds");
-        console.log("📊 Progress:", percentage.toFixed(6), "%");
+//         console.log("🔄 Current:", currentTime.format("HH:mm:ss"));
+//         console.log("🚀 Started:", startTime.format("HH:mm:ss"));
+//         console.log("🎯 Target:", end.format("HH:mm:ss"));
+//         console.log("⏳ Elapsed since join:", elapsedTime, "seconds");
+//         console.log("📊 Progress:", percentage.toFixed(6), "%");
 
-        setProgress(percentage);
-        setDebugInfo({
-          joinTimeLocal: joinTimeIST,
-          currentTime: currentTime.format("HH:mm:ss"),
-          startTime: startTime.format("HH:mm:ss"),
-          targetTime: end.format("HH:mm:ss"),
-          elapsedTime,
-          remainingTime,
-          totalDuration: totalDurationFromJoin,
-          percentage: percentage.toFixed(6),
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-        });
+//         setProgress(percentage);
+//         setDebugInfo({
+//           joinTimeLocal: joinTimeIST,
+//           currentTime: currentTime.format("HH:mm:ss"),
+//           startTime: startTime.format("HH:mm:ss"),
+//           targetTime: end.format("HH:mm:ss"),
+//           elapsedTime,
+//           remainingTime,
+//           totalDuration: totalDurationFromJoin,
+//           percentage: percentage.toFixed(6),
+//           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+//         });
         
-        lastUpdateRef.current = timestamp;
+//         lastUpdateRef.current = timestamp;
 
-        if (percentage >= 100) {
-          return;
-        }
-      }
+//         if (percentage >= 100) {
+//           return;
+//         }
+//       }
 
-      rafRef.current = requestAnimationFrame(animate);
-    };
+//       rafRef.current = requestAnimationFrame(animate);
+//     };
 
-    rafRef.current = requestAnimationFrame(animate);
+//     rafRef.current = requestAnimationFrame(animate);
 
-    return () => {
-      isActiveRef.current = false;
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
-    };
-  }, [estimatedStartTime, joinTime]);
+//     return () => {
+//       isActiveRef.current = false;
+//       if (rafRef.current) {
+//         cancelAnimationFrame(rafRef.current);
+//       }
+//     };
+//   }, [estimatedStartTime, joinTime]);
 
-  useEffect(() => {
-    return () => {
-      isActiveRef.current = false;
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
-    };
-  }, []);
+//   useEffect(() => {
+//     return () => {
+//       isActiveRef.current = false;
+//       if (rafRef.current) {
+//         cancelAnimationFrame(rafRef.current);
+//       }
+//     };
+//   }, []);
 
-  if (!showProgressBar) {
-    return null;
-  }
+//   if (!showProgressBar) {
+//     return null;
+//   }
 
-  return (
-    <div className="mt-6 w-full max-w-md mx-auto">
-      <div className="flex items-center justify-between mb-1">
-        <label className="text-sm tracking-wider uppercase font-semibold text-gray-700">
-          Time Until Service Starts
-        </label>
-      </div>
+//   return (
+//     <div className="mt-6 w-full max-w-md mx-auto">
+//       <div className="flex items-center justify-between mb-1">
+//         <label className="text-sm tracking-wider uppercase font-semibold text-gray-700">
+//           Time Until Service Starts
+//         </label>
+//       </div>
 
-      <div className="w-full h-2 bg-gray-300 rounded-full shadow-inner">
-        <div
-          className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-500 ease-linear"
-          style={{ 
-            width: `${progress}%`,
-            minWidth: progress > 0 ? '2px' : '0px',
-            transform: 'translateZ(0)'
-          }}
-        />
-      </div>
+//       <div className="w-full h-2 bg-gray-300 rounded-full shadow-inner">
+//         <div
+//           className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-500 ease-linear"
+//           style={{ 
+//             width: `${progress}%`,
+//             minWidth: progress > 0 ? '2px' : '0px',
+//             transform: 'translateZ(0)'
+//           }}
+//         />
+//       </div>
 
-      <p className="text-sm font-bold tracking-wider uppercase text-gray-600 mt-1 text-right">
-        {Math.round(progress)}% completed
-      </p>
+//       <p className="text-sm font-bold tracking-wider uppercase text-gray-600 mt-1 text-right">
+//         {Math.round(progress)}% completed
+//       </p>
       
-      {/* Detailed debug info */}
-      <div className="text-xs text-gray-500 mt-1 space-y-1 bg-gray-100 p-2 rounded">
-        <div><strong>Progress:</strong> {debugInfo.percentage || "0"}%</div>
-        <div><strong>Joined:</strong> {debugInfo.joinTimeLocal}</div>
-        <div><strong>Started:</strong> {debugInfo.startTime}</div>
-        <div><strong>Current:</strong> {debugInfo.currentTime}</div>
-        <div><strong>Target:</strong> {debugInfo.targetTime}</div>
-        <div><strong>Elapsed:</strong> {debugInfo.elapsedTime ? Math.round(debugInfo.elapsedTime / 60) : 0}min</div>
-        <div><strong>Remaining:</strong> {debugInfo.remainingTime ? Math.round(debugInfo.remainingTime / 60) : 0}min</div>
-        <div><strong>Total:</strong> {debugInfo.totalDuration ? Math.round(debugInfo.totalDuration / 60) : 0}min</div>
-      </div>
-    </div>
-  );
-};
+//       {/* Detailed debug info */}
+//       <div className="text-xs text-gray-500 mt-1 space-y-1 bg-gray-100 p-2 rounded">
+//         <div><strong>Progress:</strong> {debugInfo.percentage || "0"}%</div>
+//         <div><strong>Joined:</strong> {debugInfo.joinTimeLocal}</div>
+//         <div><strong>Started:</strong> {debugInfo.startTime}</div>
+//         <div><strong>Current:</strong> {debugInfo.currentTime}</div>
+//         <div><strong>Target:</strong> {debugInfo.targetTime}</div>
+//         <div><strong>Elapsed:</strong> {debugInfo.elapsedTime ? Math.round(debugInfo.elapsedTime / 60) : 0}min</div>
+//         <div><strong>Remaining:</strong> {debugInfo.remainingTime ? Math.round(debugInfo.remainingTime / 60) : 0}min</div>
+//         <div><strong>Total:</strong> {debugInfo.totalDuration ? Math.round(debugInfo.totalDuration / 60) : 0}min</div>
+//       </div>
+//     </div>
+//   );
+// };
 // === BookingModal Component ===
 function BookingModal({
   shopId,
@@ -1593,11 +1593,7 @@ function urlB64ToUint8Array(base64String) {
                     </p>
                   </div>
 
-                  {/* Progress Bar */}
-                  <ProgressTimer
-                    joinTime={activeBooking.join_time}
-                    estimatedStartTime={activeBooking.estimated_start}
-                  />
+                  
                   {/* Cancel Booking Button */}
                   <div className="mt-6 text-center">
                     <button
