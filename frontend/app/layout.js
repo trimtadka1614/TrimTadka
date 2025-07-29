@@ -1,5 +1,7 @@
 import './globals.css';
 import { Poppins } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import NextAuthSessionProvider from './provider'; // Import the new Client Component wrapper
 
 const poppins = Poppins({
@@ -20,6 +22,8 @@ export default function RootLayout({ children }) {
         <NextAuthSessionProvider>
           {children}
         </NextAuthSessionProvider>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
