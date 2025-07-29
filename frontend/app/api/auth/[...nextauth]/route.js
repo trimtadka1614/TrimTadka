@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 
-const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
+const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
 const authOptions = {
   providers: [
