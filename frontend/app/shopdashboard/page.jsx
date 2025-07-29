@@ -3,6 +3,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
+
 import dayjs from 'dayjs'; // For date formatting
 import {
     UsersIcon,
@@ -26,7 +27,8 @@ import {
     ArrowPathIcon as RefreshIcon, // Renamed for Heroicons v2
     FunnelIcon as FilterIcon, // Renamed for Heroicons v2
     PhoneIcon,
-    TagIcon
+    TagIcon,
+    PlusCircleIcon // Added for the new booking button
 } from '@heroicons/react/24/solid'; // Updated import path for Heroicons v2 solid icons
 import { LogOut, Scissors,
     ClipboardList,
@@ -43,6 +45,7 @@ import AddServiceModal from './AddServiceModal';
 import ShopEmployeesTable from './ShopEmplyoeesTable';
 import ShopStatusToggle from './ShopStatusToggle';
 import CancelBookingModal from './CancelBookingModal';
+import AddWalkinBookingModal from './AddWalkinBookingModal'; // Import the new modal
 
 
 export default function ShopDashboard() {
@@ -63,233 +66,235 @@ export default function ShopDashboard() {
 
     const [showRegisterStylistModal, setShowRegisterStylistModal] = useState(false);
     const [showAddServiceModal, setShowAddServiceModal] = useState(false);
-const [allBookings, setAllBookings] = useState(null); // New state for all bookings
+    const [showAddWalkinBookingModal, setShowAddWalkinBookingModal] = useState(false); // New state for walk-in modal
+
+    const [allBookings, setAllBookings] = useState(null); // New state for all bookings
     // Initialize shopIsActive with null, and fetch it from the API
     const [shopIsActive, setShopIsActive] = useState(null);
     const [loadingShopStatus, setLoadingShopStatus] = useState(true);
 
-const [isShopPushSubscribed, setIsShopPushSubscribed] = useState(false);
-const [shopSwRegistration, setShopSwRegistration] = useState(null);
+    const [isShopPushSubscribed, setIsShopPushSubscribed] = useState(false);
+    const [shopSwRegistration, setShopSwRegistration] = useState(null);
 
-// Derive shopId consistently from session.user.shop_id
-const shopId = session?.user?.shop_id;
-console.log("Shop id", shopId); // This will now correctly log the shopId
+    // Derive shopId consistently from session.user.shop_id
+    const shopId = session?.user?.shop_id;
+    console.log("Shop id", shopId); // This will now correctly log the shopId
 
-// Function to convert VAPID public key from Base64 to Uint8Array
-// (Ensure this function and VAPID_PUBLIC_KEY are defined once at a higher scope or imported)
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY; 
-function urlB64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/\-/g, '+')
-    .replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
-
-// Function to register the service worker for shops
-const registerShopServiceWorker = useCallback(async () => {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    console.warn('Push messaging is not supported in this browser.');
-    return null;
-  }
-
-  try {
-    const registration = await navigator.serviceWorker.register('/service-worker.js'); // Use the same service worker path
-    console.log('Shop Service Worker registered successfully:', registration);
-    setShopSwRegistration(registration); // Store registration for later use
-    return registration;
-  } catch (error) {
-    console.error('Shop Service Worker registration failed:', error);
-    return null;
-  }
-}, []); // No dependencies needed for this function itself
-
-// Function to check shop's push subscription status with the backend
-const checkShopSubscriptionStatus = useCallback(async () => {
-  // Use the consistently derived shopId here
-  if (!shopId) {
-    console.log('No shopId available to check subscription status.');
-    return;
-  }
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/shops/${shopId}/subscription-status`);
-    if (response.ok) {
-      const data = await response.json();
-      setIsShopPushSubscribed(data.isSubscribed);
-    } else {
-      console.error('Failed to check shop subscription status:', response.statusText);
-    }
-  } catch (error) {
-    console.error('Error checking shop subscription status:', error);
-  }
-}, [shopId]); // Dependency changed to shopId
-
-// Function to subscribe the shop to push notifications
-const subscribeShop = useCallback(async () => {
-  // Use the consistently derived shopId here
-  if (!shopSwRegistration || !shopId || !VAPID_PUBLIC_KEY) {
-    console.warn('Cannot subscribe shop: Service Worker not registered, Shop not logged in, or VAPID Public Key missing.');
-    return;
-  }
-
-  if (isShopPushSubscribed) {
-    alert('This shop is already subscribed to push notifications!');
-    return;
-  }
-
-  try {
-    const pushSubscription = await shopSwRegistration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
-    });
-    console.log('Shop Push Subscription:', pushSubscription);
-
-    // Send subscription to your backend's shop endpoint
-    const response = await fetch(`${API_BASE_URL}/shop/subscribe`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        shopId: shopId, // Use the consistently derived shopId
-        subscription: pushSubscription,
-      }),
-    });
-
-    if (response.ok) {
-      alert('Successfully subscribed shop to push notifications!');
-      setIsShopPushSubscribed(true);
-    } else {
-      const errorData = await response.json();
-      alert(`Failed to subscribe shop: ${errorData.error || response.statusText}`);
-      // Optionally, unsubscribe from browser if backend failed to store
-      await pushSubscription.unsubscribe();
-    }
-  } catch (error) {
-    console.error('Error subscribing shop to push:', error);
-    alert('An error occurred during shop subscription. Please try again.');
-  }
-}, [shopSwRegistration, shopId, isShopPushSubscribed]); // Dependency changed to shopId
-
-// Function to unsubscribe the shop from push notifications
-const unsubscribeShop = useCallback(async () => {
-  // Use the consistently derived shopId here
-  if (!shopSwRegistration || !shopId) {
-    console.warn('Cannot unsubscribe shop: Service Worker not registered or Shop not logged in.');
-    return;
-  }
-
-  if (!isShopPushSubscribed) {
-    alert('This shop is not subscribed to push notifications.');
-    return;
-  }
-
-  try {
-    const subscription = await shopSwRegistration.pushManager.getSubscription();
-    if (subscription) {
-      await subscription.unsubscribe();
-      console.log('Shop browser subscription removed.');
+    // Function to convert VAPID public key from Base64 to Uint8Array
+    // (Ensure this function and VAPID_PUBLIC_KEY are defined once at a higher scope or imported)
+    const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY; 
+    function urlB64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
     }
 
-    // Tell your backend to remove the shop's subscription
-    const response = await fetch(`${API_BASE_URL}/shop/unsubscribe`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ shopId: shopId }), // Use the consistently derived shopId
-    });
+    // Function to register the service worker for shops
+    const registerShopServiceWorker = useCallback(async () => {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn('Push messaging is not supported in this browser.');
+        return null;
+      }
 
-    if (response.ok) {
-      alert('Successfully unsubscribed shop from push notifications.');
-      setIsShopPushSubscribed(false);
-    } else {
-      const errorData = await response.json();
-      alert(`Failed to unsubscribe shop from backend: ${errorData.error || response.statusText}`);
-      // Optionally, re-subscribe in browser if backend failed to remove
-    }
-  } catch (error) {
-    console.error('Error unsubscribing shop:', error);
-    alert('An error occurred during shop unsubscription. Please try again.');
-  }
-}, [shopSwRegistration, shopId, isShopPushSubscribed]); // Dependency changed to shopId
+      try {
+        const registration = await navigator.serviceWorker.register('/service-worker.js'); // Use the same service worker path
+        console.log('Shop Service Worker registered successfully:', registration);
+        setShopSwRegistration(registration); // Store registration for later use
+        return registration;
+      } catch (error) {
+        console.error('Shop Service Worker registration failed:', error);
+        return null;
+      }
+    }, []); // No dependencies needed for this function itself
 
-// Initial setup for shop service worker and subscription status
-useEffect(() => {
-  registerShopServiceWorker(); // Register SW on component mount for shops
-  // Only check subscription status if shopId is available
-  if (shopId) {
-    checkShopSubscriptionStatus(); 
-  }
-}, [shopId, registerShopServiceWorker, checkShopSubscriptionStatus]); // Dependency changed to shopId
-    // Use a separate useEffect to fetch the shop's active status from the new API route
-    useEffect(() => {
-        const fetchShopStatus = async () => {
-            if (!shopId) {
-                setLoadingShopStatus(false);
-                return;
-            }
-            try {
-                setLoadingShopStatus(true);
-                const response = await axios.get(`${API_BASE_URL}/myshop/${shopId}`);
-                setShopIsActive(response.data.shop.isActive);
-            } catch (err) {
-                console.error('Error fetching shop active status:', err);
-                // Set to false or a default if there's an error fetching
-                setShopIsActive(false); 
-            } finally {
-                setLoadingShopStatus(false);
-            }
-        };
+    // Function to check shop's push subscription status with the backend
+    const checkShopSubscriptionStatus = useCallback(async () => {
+      // Use the consistently derived shopId here
+      if (!shopId) {
+        console.log('No shopId available to check subscription status.');
+        return;
+      }
 
-        if (status === 'authenticated' && session?.user?.role === 'shop' && shopId) {
-            fetchShopStatus();
+      try {
+        const response = await fetch(`${API_BASE_URL}/shops/${shopId}/subscription-status`);
+        if (response.ok) {
+          const data = await response.json();
+          setIsShopPushSubscribed(data.isSubscribed);
+        } else {
+          console.error('Failed to check shop subscription status:', response.statusText);
         }
-    }, [status, session, shopId]);
+      } catch (error) {
+        console.error('Error checking shop subscription status:', error);
+      }
+    }, [shopId]); // Dependency changed to shopId
 
+    // Function to subscribe the shop to push notifications
+    const subscribeShop = useCallback(async () => {
+      // Use the consistently derived shopId here
+      if (!shopSwRegistration || !shopId || !VAPID_PUBLIC_KEY) {
+        console.warn('Cannot subscribe shop: Service Worker not registered, Shop not logged in, or VAPID Public Key missing.');
+        return;
+      }
 
-const fetchBookings = useCallback(async () => {
-    if (!shopId) return;
+      if (isShopPushSubscribed) {
+        alert('This shop is already subscribed to push notifications!');
+        return;
+      }
 
-    setError(null);
-    try {
-        // Fetch filtered bookings for the main table
-        const filteredResponse = await axios.post(`${API_BASE_URL}/getAllBookings`, {
-            shop_id: shopId,
-            status: filterStatus === 'all' ? undefined : filterStatus,
-            date: filterDate || undefined,
-            limit: itemsPerPage,
-            offset: (currentPage - 1) * itemsPerPage,
-            sort_by: sortField,
-            sort_order: sortOrder,
+      try {
+        const pushSubscription = await shopSwRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
         });
-        setBookingsData(filteredResponse.data);
+        console.log('Shop Push Subscription:', pushSubscription);
 
-        // Always fetch unfiltered bookings for live queue (only booked and in_service)
-        const queueResponse = await axios.post(`${API_BASE_URL}/getAllBookings`, {
-            shop_id: shopId,
-            status: undefined, // No status filter to get all bookings
-            date: '', // No date filter for live queue
-            limit: 1000, // Large limit to get all active bookings
-            offset: 0,
-            sort_by: 'join_time',
-            sort_order: 'ASC', // Oldest first for queue order
+        // Send subscription to your backend's shop endpoint
+        const response = await fetch(`${API_BASE_URL}/shop/subscribe`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            shopId: shopId, // Use the consistently derived shopId
+            subscription: pushSubscription,
+          }),
         });
-        setAllBookings(queueResponse.data);
 
-    } catch (err) {
-        console.error('Error fetching bookings:', err);
-        setError(`Failed to fetch bookings. Ensure the backend is running and reachable. Details: ${err.message || 'Unknown error'}`);
-    } finally {
-        setLoading(false);
-    }
-}, [shopId, currentPage, filterStatus, filterDate, sortField, sortOrder, itemsPerPage]);
+        if (response.ok) {
+          alert('Successfully subscribed shop to push notifications!');
+          setIsShopPushSubscribed(true);
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to subscribe shop: ${errorData.error || response.statusText}`);
+          // Optionally, unsubscribe from browser if backend failed to store
+          await pushSubscription.unsubscribe();
+        }
+      } catch (error) {
+        console.error('Error subscribing shop to push:', error);
+        alert('An error occurred during shop subscription. Please try again.');
+      }
+    }, [shopSwRegistration, shopId, isShopPushSubscribed]); // Dependency changed to shopId
+
+    // Function to unsubscribe the shop from push notifications
+    const unsubscribeShop = useCallback(async () => {
+      // Use the consistently derived shopId here
+      if (!shopSwRegistration || !shopId) {
+        console.warn('Cannot unsubscribe shop: Service Worker not registered or Shop not logged in.');
+        return;
+      }
+
+      if (!isShopPushSubscribed) {
+        alert('This shop is not subscribed to push notifications.');
+        return;
+      }
+
+      try {
+        const subscription = await shopSwRegistration.pushManager.getSubscription();
+        if (subscription) {
+          await subscription.unsubscribe();
+          console.log('Shop browser subscription removed.');
+        }
+
+        // Tell your backend to remove the shop's subscription
+        const response = await fetch(`${API_BASE_URL}/shop/unsubscribe`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ shopId: shopId }), // Use the consistently derived shopId
+        });
+
+        if (response.ok) {
+          alert('Successfully unsubscribed shop from push notifications.');
+          setIsShopPushSubscribed(false);
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to unsubscribe shop from backend: ${errorData.error || response.statusText}`);
+          // Optionally, re-subscribe in browser if backend failed to remove
+        }
+      } catch (error) {
+        console.error('Error unsubscribing shop:', error);
+        alert('An error occurred during shop unsubscription. Please try again.');
+      }
+    }, [shopSwRegistration, shopId, isShopPushSubscribed]); // Dependency changed to shopId
+
+    // Initial setup for shop service worker and subscription status
+    useEffect(() => {
+      registerShopServiceWorker(); // Register SW on component mount for shops
+      // Only check subscription status if shopId is available
+      if (shopId) {
+        checkShopSubscriptionStatus(); 
+      }
+    }, [shopId, registerShopServiceWorker, checkShopSubscriptionStatus]); // Dependency changed to shopId
+        // Use a separate useEffect to fetch the shop's active status from the new API route
+        useEffect(() => {
+            const fetchShopStatus = async () => {
+                if (!shopId) {
+                    setLoadingShopStatus(false);
+                    return;
+                }
+                try {
+                    setLoadingShopStatus(true);
+                    const response = await axios.get(`${API_BASE_URL}/myshop/${shopId}`);
+                    setShopIsActive(response.data.shop.isActive);
+                } catch (err) {
+                    console.error('Error fetching shop active status:', err);
+                    // Set to false or a default if there's an error fetching
+                    setShopIsActive(false); 
+                } finally {
+                    setLoadingShopStatus(false);
+                }
+            };
+
+            if (status === 'authenticated' && session?.user?.role === 'shop' && shopId) {
+                fetchShopStatus();
+            }
+        }, [status, session, shopId]);
+
+
+    const fetchBookings = useCallback(async () => {
+        if (!shopId) return;
+
+        setError(null);
+        try {
+            // Fetch filtered bookings for the main table
+            const filteredResponse = await axios.post(`${API_BASE_URL}/getAllBookings`, {
+                shop_id: shopId,
+                status: filterStatus === 'all' ? undefined : filterStatus,
+                date: filterDate || undefined,
+                limit: itemsPerPage,
+                offset: (currentPage - 1) * itemsPerPage,
+                sort_by: sortField,
+                sort_order: sortOrder,
+            });
+            setBookingsData(filteredResponse.data);
+
+            // Always fetch unfiltered bookings for live queue (only booked and in_service)
+            const queueResponse = await axios.post(`${API_BASE_URL}/getAllBookings`, {
+                shop_id: shopId,
+                status: undefined, // No status filter to get all bookings
+                date: '', // No date filter for live queue
+                limit: 1000, // Large limit to get all active bookings
+                offset: 0,
+                sort_by: 'join_time',
+                sort_order: 'ASC', // Oldest first for queue order
+            });
+            setAllBookings(queueResponse.data);
+
+        } catch (err) {
+            console.error('Error fetching bookings:', err);
+            setError(`Failed to fetch bookings. Ensure the backend is running and reachable. Details: ${err.message || 'Unknown error'}`);
+        } finally {
+            setLoading(false);
+        }
+    }, [shopId, currentPage, filterStatus, filterDate, sortField, sortOrder, itemsPerPage]);
 
     useEffect(() => {
         if (status === 'unauthenticated') {
@@ -631,23 +636,36 @@ if (totalQueueMinutes > 0) {
         </div>
 
             
-        {/* 1. Register Barber, Add Services Buttons */}
-        <div className="flex items-center justify-center w-full mb-6 gap-4 p-4">
-            <button 
-                onClick={() => setShowRegisterStylistModal(true)}
-                className="flex-grow bg-[#cb3a1e] text-white p-2 rounded-lg tracking-wider uppercase text-[14px] hover:bg-[#b8341a] transition-colors duration-300 flex items-center justify-center space-x-2"
-            >
-                <UserPlusIcon className="h-5 w-5" />
-                <span>Register Stylist</span>
-            </button>
-            <button 
-                onClick={() => setShowAddServiceModal(true)}
-                className="flex-grow bg-[#cb3a1e] text-white p-2 rounded-lg uppercase tracking-wider text-[14px] hover:bg-[#b8341a] transition-colors duration-300 flex items-center justify-center space-x-2"
-            >
-                <TagIcon className="h-5 w-5" />
-                <span>Add Service</span>
-            </button>
-        </div>
+        {/* 1. Register Barber, Add Services, Add Walk-in Booking Buttons */}
+       <div className="grid grid-cols-2 gap-4 w-full mb-6 p-4">
+  {/* First Row: 2 buttons */}
+  <button 
+    onClick={() => setShowRegisterStylistModal(true)}
+    className="bg-[#cb3a1e] text-white p-2 rounded-lg tracking-wider uppercase text-[14px] hover:bg-[#b8341a] transition-colors duration-300 flex items-center justify-center space-x-2"
+  >
+    <UserPlusIcon className="h-5 w-5" />
+    <span>Register Stylist</span>
+  </button>
+
+  <button 
+    onClick={() => setShowAddServiceModal(true)}
+    className="bg-[#cb3a1e] text-white p-2 rounded-lg tracking-wider uppercase text-[14px] hover:bg-[#b8341a] transition-colors duration-300 flex items-center justify-center space-x-2"
+  >
+    <TagIcon className="h-5 w-5" />
+    <span>Add Service</span>
+  </button>
+
+  {/* Second Row: Walk-in button, spans both columns */}
+  <button 
+    onClick={() => setShowAddWalkinBookingModal(true)}
+    className="col-span-2 bg-[#cb3a1e] text-white p-2 rounded-lg tracking-wider uppercase text-[14px] hover:bg-[#b8341a] transition-colors duration-300 flex items-center justify-center space-x-2"
+  >
+    <PlusCircleIcon className="h-5 w-5" />
+    <span>Walk-in Booking</span>
+  </button>
+</div>
+
+       
 
         {/* Modals */}
         <RegisterStylistModal
@@ -664,9 +682,16 @@ if (totalQueueMinutes > 0) {
                 // You might want to refresh services list in RegisterStylistModal if it's open
                 // Or just show a success message. For now, no direct refresh needed on dashboard.
             }}
-
-
         />
+
+        {/* New Walk-in Booking Modal */}
+        <AddWalkinBookingModal
+            shopId={shopId}
+            isOpen={showAddWalkinBookingModal}
+            onClose={() => setShowAddWalkinBookingModal(false)}
+            onBookingSuccess={fetchBookings} // Refresh bookings after a successful walk-in booking
+        />
+
         {/* 2. Analytics Summary Cards */}
    <section className="mb-10 p-6 sm:p-6 lg:p-8 mt-[-40px]">
   <h2 className="text-lg font-extrabold text-white mb-6 flex   sm:justify-start uppercase tracking-wider">
