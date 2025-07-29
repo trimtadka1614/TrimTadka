@@ -812,7 +812,7 @@ const bookingEndTime = dayjs.tz(booking.end_time, IST_TIMEZONE).toDate();
                     }
                 }
 
-                finalEstimatedWaitTime = Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)));
+                finalEstimatedWaitTime = ((Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60))))-330);
 
                 // Find customer's booking if customer_id is provided
                 let customerBooking = null;
@@ -1057,7 +1057,7 @@ const bookingEndTime = dayjs.tz(booking.end_time, IST_TIMEZONE).toDate();
                     }
                 }
 
-                finalEstimatedWaitTime = Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)));
+                finalEstimatedWaitTime = ((Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60))))-330);
 
                 // Find customer's booking if customer_id is provided
                 let customerBooking = null;
