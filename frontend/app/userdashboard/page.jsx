@@ -182,18 +182,16 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
 
     setShowProgressBar(true);
 
-    // EXTENSIVE DEBUG LOGGING
-    console.log("🔍 === TIME DEBUG START ===");
+    console.log("🔍 === FIXED TIME LOGIC START ===");
     console.log("📱 User Agent:", navigator.userAgent);
     console.log("🌍 Timezone:", Intl.DateTimeFormat().resolvedOptions().timeZone);
     console.log("⏰ Estimated Start Time Input:", estimatedStartTime);
+    console.log("⏰ Join Time Input:", joinTime);
 
     const [hourStr, minuteStrPart] = estimatedStartTime.split(":");
     const [minuteStr, meridian] = minuteStrPart.split(" ");
     let hour = parseInt(hourStr, 10);
     const minute = parseInt(minuteStr, 10);
-
-    console.log("🕐 Parsed - Hour:", hour, "Minute:", minute, "Meridian:", meridian);
 
     if (meridian === "PM" && hour !== 12) {
       hour += 12;
@@ -201,41 +199,39 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
       hour = 0;
     }
 
-    console.log("🕐 24-hour format - Hour:", hour);
+    const now = dayjs();
+    console.log("⏰ Current time:", now.format("YYYY-MM-DD HH:mm:ss"));
 
-    // Create multiple time references for comparison
-    const initialNow = dayjs();
-    const nativeNow = new Date();
-    const initialNowUnix = initialNow.unix();
-    const nativeNowUnix = Math.floor(nativeNow.getTime() / 1000);
+    // FIXED LOGIC: Create end time for TODAY first
+    let end = now.hour(hour).minute(minute).second(0).millisecond(0);
+    console.log("🎯 End time (today):", end.format("YYYY-MM-DD HH:mm:ss"));
 
-    console.log("⏰ dayjs() now:", initialNow.format("YYYY-MM-DD HH:mm:ss"));
-    console.log("⏰ new Date() now:", nativeNow.toISOString());
-    console.log("⏰ dayjs unix:", initialNowUnix);
-    console.log("⏰ native unix:", nativeNowUnix);
-    console.log("⚠️ Unix difference:", initialNowUnix - nativeNowUnix, "seconds");
+    // NEW LOGIC: Determine if this should be today or tomorrow based on context
+    const timeDiffMinutes = end.diff(now, 'minute');
+    console.log("⏰ Time difference from now:", timeDiffMinutes, "minutes");
 
-    let end = initialNow.hour(hour).minute(minute).second(0).millisecond(0);
-    
-    console.log("🎯 End time (before adjustment):", end.format("YYYY-MM-DD HH:mm:ss"));
-    console.log("🔄 Is end before now?", end.isBefore(initialNow));
-
-    if (end.isBefore(initialNow)) {
+    if (timeDiffMinutes < -30) {
+      // If the time is more than 30 minutes in the past, assume next day
       end = end.add(1, "day");
-      console.log("📅 End time adjusted to next day:", end.format("YYYY-MM-DD HH:mm:ss"));
+      console.log("📅 End time adjusted to NEXT day:", end.format("YYYY-MM-DD HH:mm:ss"));
+    } else if (timeDiffMinutes < 0) {
+      // If it's slightly in the past (0-30 min), this might be a service that already started
+      console.log("⚠️ Service time appears to be in the recent past");
+      // You might want to handle this case differently based on your app's logic
+      // For now, we'll set progress to 100%
+      setProgress(100);
+      setShowProgressBar(true);
+      return () => {};
+    } else {
+      console.log("✅ End time is in the future (today)");
     }
 
-    const totalDurationFromNow = end.diff(initialNow, "second");
-    const endUnix = end.unix();
-    const totalDurationNative = endUnix - nativeNowUnix;
-
-    console.log("⏱️ Total Duration (dayjs):", totalDurationFromNow, "seconds");
-    console.log("⏱️ Total Duration (native):", totalDurationNative, "seconds");
-    console.log("⚠️ Duration difference:", totalDurationFromNow - totalDurationNative, "seconds");
+    const totalDurationFromNow = end.diff(now, "second");
+    console.log("⏱️ Total Duration:", totalDurationFromNow, "seconds");
     console.log("📊 Duration in hours:", (totalDurationFromNow / 3600).toFixed(2));
 
     if (totalDurationFromNow <= 0) {
-      console.warn("⚠️ Estimated time is in the past");
+      console.warn("⚠️ Estimated time is in the past or now");
       setProgress(100);
       return () => {};
     }
@@ -244,47 +240,33 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
       if (!isActiveRef.current) return;
 
       if (timestamp - lastUpdateRef.current >= 1000) {
-        // Use both dayjs and native Date for comparison
-        const nowDayjs = dayjs();
-        const nowNative = new Date();
+        const currentTime = dayjs();
+        const remainingTime = end.diff(currentTime, "second");
+        const elapsedTime = totalDurationFromNow - remainingTime;
         
-        const remainingTimeDayjs = end.diff(nowDayjs, "second");
-        const remainingTimeNative = endUnix - Math.floor(nowNative.getTime() / 1000);
-        
-        const elapsedDayjs = totalDurationFromNow - remainingTimeDayjs;
-        const elapsedNative = totalDurationNative - remainingTimeNative;
-        
-        const percentageDayjs = Math.max(0, Math.min((elapsedDayjs / totalDurationFromNow) * 100, 100));
-        const percentageNative = Math.max(0, Math.min((elapsedNative / totalDurationNative) * 100, 100));
+        const percentage = Math.max(
+          0,
+          Math.min((elapsedTime / totalDurationFromNow) * 100, 100)
+        );
 
-        console.log("🔄 === UPDATE ===");
-        console.log("⏰ Now (dayjs):", nowDayjs.format("HH:mm:ss"));
-        console.log("⏰ Now (native):", nowNative.toLocaleTimeString());
-        console.log("⏳ Remaining (dayjs):", remainingTimeDayjs, "seconds");
-        console.log("⏳ Remaining (native):", remainingTimeNative, "seconds");
-        console.log("📊 Progress (dayjs):", percentageDayjs.toFixed(8));
-        console.log("📊 Progress (native):", percentageNative.toFixed(8));
-        console.log("⚠️ Progress difference:", (percentageDayjs - percentageNative).toFixed(8));
+        console.log("🔄 Current:", currentTime.format("HH:mm:ss"));
+        console.log("🎯 Target:", end.format("HH:mm:ss"));
+        console.log("⏳ Remaining:", remainingTime, "seconds");
+        console.log("📊 Progress:", percentage.toFixed(6), "%");
 
-        // Use the higher progress value (more accurate)
-        const finalProgress = Math.max(percentageDayjs, percentageNative);
-        
-        setProgress(finalProgress);
+        setProgress(percentage);
         setDebugInfo({
-          nowDayjs: nowDayjs.format("HH:mm:ss"),
-          nowNative: nowNative.toLocaleTimeString(),
-          remainingDayjs,
-          remainingNative,
-          percentageDayjs,
-          percentageNative,
-          finalProgress,
+          currentTime: currentTime.format("HH:mm:ss"),
+          targetTime: end.format("HH:mm:ss"),
+          remainingTime,
           totalDuration: totalDurationFromNow,
+          percentage: percentage.toFixed(6),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
         });
         
         lastUpdateRef.current = timestamp;
 
-        if (finalProgress >= 100) {
+        if (percentage >= 100) {
           return;
         }
       }
@@ -300,7 +282,7 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
         cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [estimatedStartTime]);
+  }, [estimatedStartTime, joinTime]);
 
   useEffect(() => {
     return () => {
@@ -328,7 +310,8 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
           className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-500 ease-linear"
           style={{ 
             width: `${Math.max(progress, progress > 0 ? 1 : 0)}%`,
-            minWidth: progress > 0 ? '3px' : '0px'
+            minWidth: progress > 0 ? '3px' : '0px',
+            transform: 'translateZ(0)'
           }}
         />
       </div>
@@ -337,15 +320,13 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
         {Math.round(progress)}% completed
       </p>
       
-      {/* Detailed debug info */}
+      {/* Clean debug info */}
       <div className="text-xs text-gray-500 mt-1 space-y-1 bg-gray-100 p-2 rounded">
-        <div><strong>Progress:</strong> {progress.toFixed(8)}%</div>
-        <div><strong>Timezone:</strong> {debugInfo.timezone}</div>
+        <div><strong>Progress:</strong> {debugInfo.percentage}%</div>
+        <div><strong>Current:</strong> {debugInfo.currentTime}</div>
+        <div><strong>Target:</strong> {debugInfo.targetTime}</div>
+        <div><strong>Remaining:</strong> {Math.round(debugInfo.remainingTime / 60)}min</div>
         <div><strong>Total Duration:</strong> {Math.round(debugInfo.totalDuration / 60)}min</div>
-        <div><strong>Remaining (dayjs):</strong> {debugInfo.remainingDayjs}s</div>
-        <div><strong>Remaining (native):</strong> {debugInfo.remainingNative}s</div>
-        <div><strong>Now (dayjs):</strong> {debugInfo.nowDayjs}</div>
-        <div><strong>Now (native):</strong> {debugInfo.nowNative}</div>
       </div>
     </div>
   );
