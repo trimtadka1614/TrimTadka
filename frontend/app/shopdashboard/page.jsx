@@ -64,7 +64,7 @@ export default function ShopDashboard() {
 
     const [showRegisterStylistModal, setShowRegisterStylistModal] = useState(false);
     const [showAddServiceModal, setShowAddServiceModal] = useState(false);
-
+const [allBookings, setAllBookings] = useState(null); // New state for all bookings
     // Initialize shopIsActive with null, and fetch it from the API
     const [shopIsActive, setShopIsActive] = useState(null);
     const [loadingShopStatus, setLoadingShopStatus] = useState(true);
@@ -255,29 +255,42 @@ useEffect(() => {
     }, [status, session, shopId]);
 
 
-    const fetchBookings = useCallback(async () => {
-        if (!shopId) return;
+const fetchBookings = useCallback(async () => {
+    if (!shopId) return;
 
-        // setLoading(true); // Keep loading state for initial fetch or explicit refresh
-        setError(null);
-        try {
-            const response = await axios.post(`${API_BASE_URL}/getAllBookings`, {
-                shop_id: shopId,
-                status: filterStatus === 'all' ? undefined : filterStatus,
-                date: filterDate || undefined,
-                limit: itemsPerPage,
-                offset: (currentPage - 1) * itemsPerPage,
-                sort_by: sortField,
-                sort_order: sortOrder,
-            });
-            setBookingsData(response.data);
-        } catch (err) {
-            console.error('Error fetching bookings:', err);
-            setError(`Failed to fetch bookings. Ensure the backend is running and reachable. Details: ${err.message || 'Unknown error'}`);
-        } finally {
-            setLoading(false); // Only set loading to false after the fetch is complete
-        }
-    }, [shopId, currentPage, filterStatus, filterDate, sortField, sortOrder, itemsPerPage]);
+    setError(null);
+    try {
+        // Fetch filtered bookings for the main table
+        const filteredResponse = await axios.post(`${API_BASE_URL}/getAllBookings`, {
+            shop_id: shopId,
+            status: filterStatus === 'all' ? undefined : filterStatus,
+            date: filterDate || undefined,
+            limit: itemsPerPage,
+            offset: (currentPage - 1) * itemsPerPage,
+            sort_by: sortField,
+            sort_order: sortOrder,
+        });
+        setBookingsData(filteredResponse.data);
+
+        // Always fetch unfiltered bookings for live queue (only booked and in_service)
+        const queueResponse = await axios.post(`${API_BASE_URL}/getAllBookings`, {
+            shop_id: shopId,
+            status: undefined, // No status filter to get all bookings
+            date: '', // No date filter for live queue
+            limit: 1000, // Large limit to get all active bookings
+            offset: 0,
+            sort_by: 'join_time',
+            sort_order: 'ASC', // Oldest first for queue order
+        });
+        setAllBookings(queueResponse.data);
+
+    } catch (err) {
+        console.error('Error fetching bookings:', err);
+        setError(`Failed to fetch bookings. Ensure the backend is running and reachable. Details: ${err.message || 'Unknown error'}`);
+    } finally {
+        setLoading(false);
+    }
+}, [shopId, currentPage, filterStatus, filterDate, sortField, sortOrder, itemsPerPage]);
 
     useEffect(() => {
         if (status === 'unauthenticated') {
@@ -467,31 +480,34 @@ if (status === 'loading' || loading) {
     const topCustomer = customerCounts ? Object.keys(customerCounts).reduce((a, b) => (customerCounts[a] > customerCounts[b] ? a : b), null) : 'N/A';
 
     // Calculate estimated queue time
-const currentQueueBookings = bookings?.filter(b => b.status === 'booked' || b.status === 'in_service') || [];
+const originalBookings = bookings; // Use whatever variable holds your original data
 
-    let totalQueueMinutes = 0;
+// Live Queue Data - always use original unfiltered data
+const currentQueueBookings = allBookings?.bookings?.filter(b => b.status === 'booked' || b.status === 'in_service') || [];
 
-    currentQueueBookings.forEach(b => {
-      if (b.status === 'in_service' && b.time_remaining) {
-        const mins = parseInt(b.time_remaining);
-        if (!isNaN(mins)) totalQueueMinutes += mins;
-      } else if (b.status === 'booked' && b.time_until_service) {
-        const mins = parseInt(b.time_until_service);
-        if (!isNaN(mins)) totalQueueMinutes += mins;
-      }
-    });
+let totalQueueMinutes = 0;
 
-    let estimatedQueueTime;
-    if (totalQueueMinutes > 0) {
-      const hours = Math.floor(totalQueueMinutes / 60);
-      const minutes = totalQueueMinutes % 60;
-      const timeParts = [];
-      if (hours > 0) timeParts.push(`${hours} hr`);
-      if (minutes > 0 || hours === 0) timeParts.push(`${minutes} mins`);
-      estimatedQueueTime = timeParts.join(' ');
-    } else {
-      estimatedQueueTime = '0 mins';
-    }
+currentQueueBookings.forEach(b => {
+  if (b.status === 'in_service' && b.time_remaining) {
+    const mins = parseInt(b.time_remaining);
+    if (!isNaN(mins)) totalQueueMinutes += mins;
+  } else if (b.status === 'booked' && b.time_until_service) {
+    const mins = parseInt(b.time_until_service);
+    if (!isNaN(mins)) totalQueueMinutes += mins;
+  }
+});
+
+let estimatedQueueTime;
+if (totalQueueMinutes > 0) {
+  const hours = Math.floor(totalQueueMinutes / 60);
+  const minutes = totalQueueMinutes % 60;
+  const timeParts = [];
+  if (hours > 0) timeParts.push(`${hours} hr`);
+  if (minutes > 0 || hours === 0) timeParts.push(`${minutes} mins`);
+  estimatedQueueTime = timeParts.join(' ');
+} else {
+  estimatedQueueTime = '0 mins';
+}
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#f6c76d] to-[#cb3a1e] font-inter">
         <style jsx global>{`
