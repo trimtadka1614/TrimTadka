@@ -799,8 +799,8 @@ app.get('/shops/simple', async (req, res) => {
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate();
-                    const bookingEndTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate();
+                    const bookingJoinTime = dayjs.tz(booking.join_time, IST_TIMEZONE).toDate();
+const bookingEndTime = dayjs.tz(booking.end_time, IST_TIMEZONE).toDate();
 
                     if (booking.status === 'in_service') {
                         lastBookingEndTime = dayjs(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
@@ -1044,8 +1044,8 @@ app.post('/shop_status', async (req, res) => {
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate();
-                    const bookingEndTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate();
+                    const bookingJoinTime = dayjs.tz(booking.join_time, IST_TIMEZONE).toDate();
+const bookingEndTime = dayjs.tz(booking.end_time, IST_TIMEZONE).toDate();
 
                     if (booking.status === 'in_service') {
                         lastBookingEndTime = dayjs(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
