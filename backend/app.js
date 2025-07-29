@@ -3,16 +3,18 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const haversine = require("haversine-distance");
+const dayjs = require('dayjs'); // For easy time manipulation
+const utc = require('dayjs/plugin/utc'); // Import UTC plugin
+const timezone = require('dayjs/plugin/timezone'); // Import Timezone plugin
+dayjs.extend(utc); // Extend dayjs with UTC plugin
+dayjs.extend(timezone); // Extend dayjs with Timezone plugin
 
 require('dotenv').config(); // Load environment variables from .env file
 const webpush = require('web-push'); // Added for push notifications
-const dayjs = require('dayjs');
-const utc = require('dayjs/plugin/utc');
-const timezone = require('dayjs/plugin/timezone');
 
-// Enable dayjs plugins
-dayjs.extend(utc);
-dayjs.extend(timezone);
+// Define the IST timezone
+const IST_TIMEZONE = 'Asia/Kolkata';
+
 // Initialize Express app
 const app = express();
 // Vercel automatically assigns a port, so we don't need to explicitly listen on one.
@@ -603,7 +605,7 @@ app.get('/profile', authenticateToken, (req, res) => {
     res.json({
         message: 'This is a protected route',
         user: req.user,
-        timestamp: new Date().toISOString()
+        timestamp: dayjs().tz(IST_TIMEZONE).toISOString() // Formatted to IST
     });
 });
 
@@ -716,7 +718,7 @@ app.get('/shops/simple', async (req, res) => {
         const shopsResult = await pool.query(shopsQuery);
         
         // Get current and future bookings for queue calculation for all shops
-        const currentTime = new Date();
+        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
         const bookingsQuery = `
             SELECT 
                 b.booking_id,
@@ -772,24 +774,25 @@ app.get('/shops/simple', async (req, res) => {
                 
                 // Calculate estimated wait time
                 let finalEstimatedWaitTime = 0;
-                let lastBookingEndTime = currentTime; // Start with current time as the reference point for calculating next available slot
+                // Start with current time as the reference point for calculating next available slot (in IST)
+                let lastBookingEndTime = dayjs(currentTime).tz(IST_TIMEZONE).toDate(); 
 
                 // Sort all active bookings by join_time to process them sequentially
                 const sortedActiveBookings = empBookings
-                    .sort((a, b) => new Date(a.join_time).getTime() - new Date(b.join_time).getTime());
+                    .sort((a, b) => dayjs(a.join_time).tz(IST_TIMEZONE).toDate().getTime() - dayjs(b.join_time).tz(IST_TIMEZONE).toDate().getTime());
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = new Date(booking.join_time);
-                    const bookingEndTime = new Date(booking.end_time);
+                    const bookingJoinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate();
+                    const bookingEndTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate();
 
                     if (booking.status === 'in_service') {
-                        lastBookingEndTime = new Date(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)); // Add 5 min buffer
+                        lastBookingEndTime = dayjs(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
                     } else if (booking.status === 'booked') {
-                        const potentialStartTimeAfterPrevious = new Date(lastBookingEndTime.getTime()); 
-                        const actualStartTimeForThisBooking = new Date(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime()));
+                        const potentialStartTimeAfterPrevious = dayjs(lastBookingEndTime).tz(IST_TIMEZONE).toDate(); 
+                        const actualStartTimeForThisBooking = dayjs(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime())).tz(IST_TIMEZONE).toDate();
                         
-                        lastBookingEndTime = new Date(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000); // Add 5 min buffer
+                        lastBookingEndTime = dayjs(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
                     }
                 }
 
@@ -829,8 +832,8 @@ app.get('/shops/simple', async (req, res) => {
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    const joinTime = new Date(customerBooking.join_time);
-                    const endTime = new Date(customerBooking.end_time);
+                    const joinTime = dayjs(customerBooking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
+                    const endTime = dayjs(customerBooking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
                     
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
@@ -880,7 +883,7 @@ app.get('/shops/simple', async (req, res) => {
             shops: shops,
             total_shops: shops.length,
             user_location_provided: !!(lat && long),
-            timestamp: new Date().toISOString()
+            timestamp: dayjs().tz(IST_TIMEZONE).toISOString() // Formatted to IST
         });
 
     } catch (error) {
@@ -954,7 +957,7 @@ app.post('/shop_status', async (req, res) => {
         }
         
         // Get current and future bookings for queue calculation for the specific shop
-        const currentTime = new Date();
+        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
         const bookingsQuery = `
             SELECT 
                 b.booking_id,
@@ -1011,24 +1014,25 @@ app.post('/shop_status', async (req, res) => {
                 
                 // Calculate estimated wait time
                 let finalEstimatedWaitTime = 0;
-                let lastBookingEndTime = currentTime; // Start with current time as the reference point for calculating next available slot
+                // Start with current time as the reference point for calculating next available slot (in IST)
+                let lastBookingEndTime = dayjs(currentTime).tz(IST_TIMEZONE).toDate(); 
 
                 // Sort all active bookings by join_time to process them sequentially
                 const sortedActiveBookings = empBookings
-                    .sort((a, b) => new Date(a.join_time).getTime() - new Date(b.join_time).getTime());
+                    .sort((a, b) => dayjs(a.join_time).tz(IST_TIMEZONE).toDate().getTime() - dayjs(b.join_time).tz(IST_TIMEZONE).toDate().getTime());
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = new Date(booking.join_time);
-                    const bookingEndTime = new Date(booking.end_time);
+                    const bookingJoinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate();
+                    const bookingEndTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate();
 
                     if (booking.status === 'in_service') {
-                        lastBookingEndTime = new Date(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)); // Add 5 min buffer
+                        lastBookingEndTime = dayjs(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
                     } else if (booking.status === 'booked') {
-                        const potentialStartTimeAfterPrevious = new Date(lastBookingEndTime.getTime()); 
-                        const actualStartTimeForThisBooking = new Date(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime()));
+                        const potentialStartTimeAfterPrevious = dayjs(lastBookingEndTime).tz(IST_TIMEZONE).toDate(); 
+                        const actualStartTimeForThisBooking = dayjs(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime())).tz(IST_TIMEZONE).toDate();
                         
-                        lastBookingEndTime = new Date(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000); // Add 5 min buffer
+                        lastBookingEndTime = dayjs(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
                     }
                 }
 
@@ -1068,8 +1072,8 @@ app.post('/shop_status', async (req, res) => {
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    const joinTime = new Date(customerBooking.join_time);
-                    const endTime = new Date(customerBooking.end_time);
+                    const joinTime = dayjs(customerBooking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
+                    const endTime = dayjs(customerBooking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
                     
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
@@ -1119,7 +1123,7 @@ app.post('/shop_status', async (req, res) => {
             shops: shops,
             total_shops: shops.length,
             user_location_provided: !!(lat && long),
-            timestamp: new Date().toISOString()
+            timestamp: dayjs().tz(IST_TIMEZONE).toISOString() // Formatted to IST
         });
 
     } catch (error) {
@@ -1400,15 +1404,6 @@ app.get('/shops/:shop_id/employees', async (req, res) => {
 // Utility function to update booking statuses based on current time
 // This is a conceptual example of your updateBookingStatuses function.
 // You need to integrate this logic into your actual function's implementation.
-function getCurrentTimeIST() {
-    return dayjs().tz('Asia/Kolkata').toDate();
-}
-
-// Helper function to convert any date to IST
-function toIST(date) {
-    return dayjs(date).tz('Asia/Kolkata').toDate();
-}
-
 async function updateBookingStatuses() {
     console.log('Running updateBookingStatuses to check for changes and send notifications...');
     let client;
@@ -1416,7 +1411,7 @@ async function updateBookingStatuses() {
         client = await pool.connect();
         await client.query('BEGIN'); // Start transaction
 
-        const currentTime = getCurrentTimeIST();
+        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
 
         // 1. Update 'booked' to 'in_service'
         const inServiceResult = await client.query(
@@ -1582,7 +1577,7 @@ app.post('/bookings', async (req, res) => {
         await client.query('BEGIN');
         await updateBookingStatuses(client); // Ensure statuses are fresh
 
-        const currentTime = getCurrentTimeIST(); // Current time in IST when the request is received
+        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Current time in IST
 
         const shopCheck = await client.query('SELECT shop_id, shop_name FROM shops WHERE shop_id = $1 AND is_active = TRUE', [shop_id]);
         if (shopCheck.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shop not found or inactive' }); }
@@ -1594,7 +1589,7 @@ app.post('/bookings', async (req, res) => {
         const existingBookingForCustomer = await client.query(`
             SELECT booking_id FROM bookings
             WHERE emp_id = $1 AND customer_id = $2
-            AND DATE(join_time AT TIME ZONE 'Asia/Kolkata') = DATE($3 AT TIME ZONE 'Asia/Kolkata')
+            AND DATE(join_time) = DATE($3)
             AND status IN ('booked', 'in_service')
         `, [emp_id, customer_id, currentTime]);
         if (existingBookingForCustomer.rowCount > 0) {
@@ -1640,21 +1635,23 @@ app.post('/bookings', async (req, res) => {
         `, [emp_id]);
 
         // 2. Determine the earliest possible start time for any new service
-        // This is now + 5 minutes buffer (in IST)
-        let potentialSlotStart = new Date(currentTime.getTime() + bufferTimeMs);
+        // This is now (in IST) + 5 minutes buffer
+        let potentialSlotStart = dayjs(currentTime).add(5, 'minute').toDate();
 
         // 3. Iterate through existing bookings to find a gap
         // If there's an 'in_service' booking, the slot can't start before its end time
         if (activeBookings.rows.length > 0 && activeBookings.rows[0].status === 'in_service') {
-            const inServiceEndTime = toIST(activeBookings.rows[0].end_time);
-            potentialSlotStart = new Date(Math.max(potentialSlotStart.getTime(), inServiceEndTime.getTime() + bufferTimeMs));
+            // Ensure end_time from DB is treated as IST for comparison
+            const inServiceEndTimeIST = dayjs(activeBookings.rows[0].end_time).tz(IST_TIMEZONE).toDate();
+            potentialSlotStart = dayjs(Math.max(potentialSlotStart.getTime(), inServiceEndTimeIST.getTime() + bufferTimeMs)).toDate();
         }
 
         // Now iterate through the rest of the queue to find gaps
         for (let i = 0; i < activeBookings.rows.length; i++) {
             const currentBooking = activeBookings.rows[i];
-            const currentBookingStartTime = toIST(currentBooking.join_time);
-            const currentBookingEndTime = toIST(currentBooking.end_time);
+            // Treat DB times as IST for calculations
+            const currentBookingStartTime = dayjs(currentBooking.join_time).tz(IST_TIMEZONE).toDate();
+            const currentBookingEndTime = dayjs(currentBooking.end_time).tz(IST_TIMEZONE).toDate();
 
             // Check the gap *before* the current booking
             // The gap must be large enough to accommodate the new booking + buffer
@@ -1665,9 +1662,9 @@ app.post('/bookings', async (req, res) => {
                 break;
             }
 
-            // Move potentialSlotStart to after the current booking
+            // Move potentialSlotStart to after the current booking (in IST)
             // This sets up the check for the gap *after* the current booking
-            potentialSlotStart = new Date(currentBookingEndTime.getTime() + bufferTimeMs);
+            potentialSlotStart = dayjs(currentBookingEndTime.getTime() + bufferTimeMs).toDate();
         }
 
         // If no slot was found in between, place it at the very end of the queue
@@ -1676,7 +1673,7 @@ app.post('/bookings', async (req, res) => {
         }
         // --- END OF CORE LOGIC ---
 
-        const endTime = new Date(actualJoinTime.getTime() + bookingDurationMs);
+        const endTime = dayjs(actualJoinTime).add(totalDuration, 'minute').toDate(); // Calculate end time based on IST join time
 
         const service_type = services.map(s => ({
             id: s.service_id,
@@ -1685,7 +1682,7 @@ app.post('/bookings', async (req, res) => {
         }));
 
         let initialStatus = 'booked';
-        if (actualJoinTime <= currentTime) {
+        if (dayjs(actualJoinTime).tz(IST_TIMEZONE).toDate() <= currentTime) { // Compare IST times
             initialStatus = 'in_service';
         }
 
@@ -1702,9 +1699,9 @@ app.post('/bookings', async (req, res) => {
             emp_id,
             customer_id,
             JSON.stringify(service_type),
-            actualJoinTime, // Already in IST
+            actualJoinTime, // This Date object represents IST time
             totalDuration,
-            endTime, // Already in IST
+            endTime, // This Date object represents IST time
             initialStatus
         ];
 
@@ -1713,6 +1710,7 @@ app.post('/bookings', async (req, res) => {
         
         await client.query('COMMIT');
 
+        // Calculate queue position relative to IST times
         const queuePosition = await client.query(`
             SELECT COUNT(*) + 1 as position
             FROM bookings
@@ -1724,7 +1722,7 @@ app.post('/bookings', async (req, res) => {
         // Notify Customer
         await sendNotificationToCustomer(customer_id, {
             title: 'Booking Confirmed!',
-            body: `Your booking (ID: ${newBooking.booking_id}) at ${shopCheck.rows[0].shop_name} with ${empCheck.rows[0].emp_name} is confirmed for ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
+            body: `Your booking (ID: ${newBooking.booking_id}) at ${shopCheck.rows[0].shop_name} with ${empCheck.rows[0].emp_name} is confirmed for ${dayjs(actualJoinTime).tz(IST_TIMEZONE).format('hh:mm A')}.`,
             url: `/dashboard?bookingId=${newBooking.booking_id}`,
             bookingId: newBooking.booking_id,
             type: 'new_booking_customer',
@@ -1733,7 +1731,7 @@ app.post('/bookings', async (req, res) => {
         // Notify Shop
         await sendNotificationToShop(shop_id, {
             title: 'New Booking Received!',
-            body: `A new booking (ID: ${newBooking.booking_id}) has been made with ${empCheck.rows[0].emp_name} for ${customerCheck.rows[0].customer_name} at ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
+            body: `A new booking (ID: ${newBooking.booking_id}) has been made with ${empCheck.rows[0].emp_name} for ${customerCheck.rows[0].customer_name} at ${dayjs(actualJoinTime).tz(IST_TIMEZONE).format('hh:mm A')}.`,
             url: `/shop/dashboard?bookingId=${newBooking.booking_id}`,
             bookingId: newBooking.booking_id,
             type: 'new_booking_shop',
@@ -1751,19 +1749,19 @@ app.post('/bookings', async (req, res) => {
                 total_duration_minutes: totalDuration,
                 queue_position: initialStatus === 'booked' ? queuePosition.rows[0].position : null,
                 formatted_times: {
-                    join_time: dayjs(actualJoinTime).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'),
-                    end_time: dayjs(endTime).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'),
-                    join_time_display: dayjs(actualJoinTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'),
-                    end_time_display: dayjs(endTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A')
+                    join_time: dayjs(actualJoinTime).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss'),
+                    end_time: dayjs(endTime).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss'),
+                    join_time_display: dayjs(actualJoinTime).tz(IST_TIMEZONE).format('MMM DD, YYYY - hh:mm A'),
+                    end_time_display: dayjs(endTime).tz(IST_TIMEZONE).format('MMM DD, YYYY - hh:mm A')
                 },
                 estimated_wait_time: initialStatus === 'booked' ?
-                    Math.max(0, Math.ceil((actualJoinTime - currentTime) / (1000 * 60))) + ' minutes' :
+                    Math.max(0, Math.ceil((dayjs(actualJoinTime).tz(IST_TIMEZONE).toDate().getTime() - currentTime.getTime()) / (1000 * 60))) + ' minutes' :
                     'Service starting now',
                 automatic_status_info: {
-                    will_start_at: dayjs(actualJoinTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'),
-                    will_complete_at: dayjs(endTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'),
+                    will_start_at: dayjs(actualJoinTime).tz(IST_TIMEZONE).format('MMM DD, YYYY - hh:mm A'),
+                    will_complete_at: dayjs(endTime).tz(IST_TIMEZONE).format('MMM DD, YYYY - hh:mm A'),
                     status_changes: {
-                        to_in_service: actualJoinTime <= currentTime ? 'Already started' : 'When join_time is reached',
+                        to_in_service: dayjs(actualJoinTime).tz(IST_TIMEZONE).toDate() <= currentTime ? 'Already started' : 'When join_time is reached',
                         to_completed: 'Automatically when service ends'
                     }
                 }
@@ -1848,7 +1846,7 @@ app.post('/bookings/cancel', async (req, res) => {
 
             await sendNotificationToShop(shop_id, {
                 title: 'Booking Cancelled by Customer!',
-                body: `Booking (ID: ${booking_id}) with ${empName} for ${customerName} at ${dayjs(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the customer.`,
+                body: `Booking (ID: ${booking_id}) with ${empName} for ${customerName} at ${dayjs(join_time).tz(IST_TIMEZONE).format('hh:mm A')} has been cancelled by the customer.`, // Formatted to IST
                 url: `/shop/dashboard?bookingId=${booking_id}`,
                 bookingId: booking_id,
                 type: 'shop_booking_customer_cancelled',
@@ -1862,8 +1860,8 @@ app.post('/bookings/cancel', async (req, res) => {
             cancelled_booking: {
                 booking_id: cancelledBooking.booking_id,
                 status: cancelledBooking.status,
-                original_join_time: dayjs(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'),
-                original_end_time: dayjs(end_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss')
+                original_join_time: dayjs(join_time).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss'), // Formatted to IST
+                original_end_time: dayjs(end_time).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss') // Formatted to IST
             }
         });
 
@@ -1941,7 +1939,7 @@ app.post('/shop/bookings/cancel', async (req, res) => {
         if (customer_id) {
             const notificationPayload = {
                 title: 'Booking Cancelled!',
-                body: `Your booking (ID: ${booking_id}) on ${dayjs(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD')} at ${dayjs(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the shop.`,
+                body: `Your booking (ID: ${booking_id}) on ${dayjs(join_time).tz(IST_TIMEZONE).format('YYYY-MM-DD')} at ${dayjs(join_time).tz(IST_TIMEZONE).format('hh:mm A')} has been cancelled by the shop.`, // Formatted to IST
                 url: `/dashboard?bookingId=${booking_id}`, // Link to customer's dashboard or specific booking
                 bookingId: booking_id,
                 type: 'booking_cancelled', // Custom type for client-side handling
@@ -1954,7 +1952,7 @@ app.post('/shop/bookings/cancel', async (req, res) => {
         if (shop_id) {
             await sendNotificationToShop(shop_id, {
                 title: 'Booking Successfully Cancelled!',
-                body: `You have successfully cancelled booking (ID: ${booking_id}) for ${dayjs(join_time).tz('Asia/Kolkata').format('hh:mm A')}.`,
+                body: `You have successfully cancelled booking (ID: ${booking_id}) for ${dayjs(join_time).tz(IST_TIMEZONE).format('hh:mm A')}.`, // Formatted to IST
                 url: `/shop/dashboard?bookingId=${booking_id}`,
                 bookingId: booking_id,
                 type: 'shop_booking_self_cancelled',
@@ -1968,8 +1966,8 @@ app.post('/shop/bookings/cancel', async (req, res) => {
             cancelled_booking: {
                 booking_id: cancelledBooking.booking_id,
                 status: cancelledBooking.status,
-                original_join_time: dayjs(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'),
-                original_end_time: dayjs(end_time).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss')
+                original_join_time: dayjs(join_time).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss'), // Formatted to IST
+                original_end_time: dayjs(end_time).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss') // Formatted to IST
             }
         });
 
@@ -1984,7 +1982,6 @@ app.post('/shop/bookings/cancel', async (req, res) => {
         client.release();
     }
 });
-
 // --- CORRECTED Helper function to update subsequent bookings ---
 // Ensure webpush and sendNotificationToCustomer are defined and accessible globally or in an appropriate scope in your app.js
 // as provided in the previous turn.
@@ -1998,13 +1995,14 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
         AND join_time >= $2
         ORDER BY join_time ASC;
     `;
-    const { rows: subsequentBookings } = await client.query(subsequentBookingsQuery, [empId, cancelledBookingOriginalEndTime]);
+    // Ensure cancelledBookingOriginalEndTime is treated as IST for comparison
+    const { rows: subsequentBookings } = await client.query(subsequentBookingsQuery, [empId, dayjs(cancelledBookingOriginalEndTime).tz(IST_TIMEZONE).toDate()]);
 
     if (subsequentBookings.length === 0) {
         return;
     }
 
-    const currentTime = getCurrentTimeIST();
+    const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
 
     const timeToShift = cancelledServiceDurationMinutes * 60000; // minutes to ms
 
@@ -2018,20 +2016,20 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
         AND end_time < $2
         ORDER BY end_time DESC
         LIMIT 1;
-    `, [empId, cancelledBookingOriginalEndTime]);
+    `, [empId, dayjs(cancelledBookingOriginalEndTime).tz(IST_TIMEZONE).toDate()]); // Treat as IST
 
     if (precedingBookingQuery.rowCount > 0) {
-        effectivePreviousEndTime = toIST(precedingBookingQuery.rows[0].end_time).getTime();
+        effectivePreviousEndTime = dayjs(precedingBookingQuery.rows[0].end_time).tz(IST_TIMEZONE).toDate().getTime(); // Treat as IST
     } else {
         effectivePreviousEndTime = currentTime.getTime();
     }
 
-    let currentCalculatedTime = new Date(effectivePreviousEndTime + 5 * 60000);
-    currentCalculatedTime = new Date(Math.max(currentCalculatedTime.getTime(), currentTime.getTime() + 5 * 60000));
+    let currentCalculatedTime = dayjs(effectivePreviousEndTime).add(5, 'minute').toDate(); // Calculate in IST
+    currentCalculatedTime = dayjs(Math.max(currentCalculatedTime.getTime(), currentTime.getTime() + 5 * 60000)).toDate(); // Calculate in IST
 
     for (const booking of subsequentBookings) {
-        const originalJoinTime = toIST(booking.join_time);
-        const originalEndTime = toIST(booking.end_time);
+        const originalJoinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate(); // Treat as IST
+        const originalEndTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate(); // Treat as IST
         const customerId = booking.customer_id;
 
         const originalEstimatedWaitTime = Math.max(0, Math.ceil((originalJoinTime.getTime() - currentTime.getTime()) / (1000 * 60)));
@@ -2039,8 +2037,8 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
         let newJoinTime;
         let newEndTime;
 
-        newJoinTime = new Date(Math.max(originalJoinTime.getTime() - timeToShift, currentCalculatedTime.getTime()));
-        newEndTime = new Date(newJoinTime.getTime() + booking.service_duration_minutes * 60000);
+        newJoinTime = dayjs(Math.max(originalJoinTime.getTime() - timeToShift, currentCalculatedTime.getTime())).toDate(); // Calculate in IST
+        newEndTime = dayjs(newJoinTime).add(booking.service_duration_minutes, 'minute').toDate(); // Calculate in IST
 
         const newEstimatedWaitTime = Math.max(0, Math.ceil((newJoinTime.getTime() - currentTime.getTime()) / (1000 * 60)));
 
@@ -2049,9 +2047,9 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
                 `UPDATE bookings
                  SET join_time = $1, end_time = $2
                  WHERE booking_id = $3`,
-                [newJoinTime, newEndTime, booking.booking_id]
+                [newJoinTime, newEndTime, booking.booking_id] // Store IST Date objects
             );
-            console.log(`Updated booking ${booking.booking_id}: Old join_time: ${dayjs(originalJoinTime).tz('Asia/Kolkata').format('HH:mm')}, New join_time ${dayjs(newJoinTime).tz('Asia/Kolkata').format('HH:mm')}`);
+            console.log(`Updated booking ${booking.booking_id}: Old join_time: ${dayjs(originalJoinTime).tz(IST_TIMEZONE).format('HH:mm')}, New join_time ${dayjs(newJoinTime).tz(IST_TIMEZONE).format('HH:mm')}`); // Log in IST
 
             // Notify Customer about time shift
             if (customerId) {
@@ -2061,7 +2059,7 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
                 if (timeDifference >= 5) { // Notify if shifted by 5 minutes or more
                     notificationPayload = {
                         title: 'Booking Time Shifted!',
-                        body: `Your booking (ID: ${booking.booking_id}) is now scheduled ${timeDifference} minutes earlier. New start time: ${dayjs(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
+                        body: `Your booking (ID: ${booking.booking_id}) is now scheduled ${timeDifference} minutes earlier. New start time: ${dayjs(newJoinTime).tz(IST_TIMEZONE).format('hh:mm A')}.`, // Formatted to IST
                         url: `/dashboard?bookingId=${booking.booking_id}`,
                         bookingId: booking.booking_id,
                         type: 'time_shift',
@@ -2092,14 +2090,14 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
 
                 await sendNotificationToShop(shopId, {
                     title: 'Queue Updated!',
-                    body: `Booking (ID: ${booking.booking_id}) for ${customerName} with ${empName} has been shifted. New start time: ${dayjs(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
+                    body: `Booking (ID: ${booking.booking_id}) for ${customerName} with ${empName} has been shifted. New start time: ${dayjs(newJoinTime).tz(IST_TIMEZONE).format('hh:mm A')}.`, // Formatted to IST
                     url: `/shop/dashboard?bookingId=${booking.booking_id}`,
                     bookingId: booking.booking_id,
                     type: 'shop_queue_update',
                 });
             }
         }
-        currentCalculatedTime = new Date(newEndTime.getTime() + 5 * 60000);
+        currentCalculatedTime = dayjs(newEndTime).add(5, 'minute').toDate(); // Calculate in IST
     }
 }
 // --- Route to get bookings for a specific customer with filters and pagination ---
@@ -2133,7 +2131,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
 
     try {
         // Define currentTime at the beginning of the route handler for consistent time calculations
-        const currentTime = new Date();
+        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
 
         // It's good practice to update booking statuses before fetching,
         // ensuring the data is as current as possible.
@@ -2167,7 +2165,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         }
 
         if (date) {
-            const dateObj = new Date(date);
+            const dateObj = dayjs(date).tz(IST_TIMEZONE).toDate(); // Treat input date as IST
             if (!isNaN(dateObj.getTime())) { // Check if date is valid
                 query += ` AND DATE(b.join_time) = DATE($${paramIndex})`;
                 queryParams.push(dateObj);
@@ -2229,7 +2227,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         }
 
         if (date) {
-            const dateObj = new Date(date);
+            const dateObj = dayjs(date).tz(IST_TIMEZONE).toDate(); // Treat input date as IST
             if (!isNaN(dateObj.getTime())) {
                 countQuery += ` AND DATE(b.join_time) = DATE($${countParamIndex})`;
                 countParams.push(dateObj);
@@ -2256,18 +2254,18 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         // Process and format each booking's data for the response
         const bookings = result.rows.map(booking => {
             let timeInfo = {}; // Object to hold time-related display information
-            const joinTime = new Date(booking.join_time);
-            const endTime = new Date(booking.end_time);
+            const joinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
+            const endTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
 
             // Populate timeInfo based on the booking status
             if (booking.status === 'booked') {
-                const timeUntilStart = Math.max(0, Math.ceil((joinTime - currentTime) / (1000 * 60)));
+                const timeUntilStart = Math.max(0, Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)));
                 timeInfo = {
                     time_until_service: timeUntilStart + ' minutes',
                     estimated_start: dayjs(joinTime).format('hh:mm A')
                 };
             } else if (booking.status === 'in_service') {
-                const timeUntilEnd = Math.max(0, Math.ceil((endTime - currentTime) / (1000 * 60)));
+                const timeUntilEnd = Math.max(0, Math.ceil((endTime.getTime() - currentTime.getTime()) / (1000 * 60)));
                 timeInfo = {
                     time_remaining: timeUntilEnd + ' minutes',
                     estimated_completion: dayjs(endTime).format('hh:mm A')
@@ -2308,7 +2306,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
 
         if (date) {
             statusSummaryQuery += ` AND DATE(b.join_time) = DATE($${statusSummaryParamIndex})`;
-            statusSummaryParams.push(date);
+            statusSummaryParams.push(dayjs(date).tz(IST_TIMEZONE).toDate()); // Treat input date as IST
             statusSummaryParamIndex++;
         }
         if (shop_id && Number.isInteger(parseInt(shop_id))) {
@@ -2358,7 +2356,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
             summary: {
                 total_bookings_for_customer: totalCount,
                 status_breakdown: statusCounts,
-                last_status_update: new Date().toISOString() // Timestamp of when statuses were last updated/fetched
+                last_status_update: dayjs().tz(IST_TIMEZONE).toISOString() // Timestamp of when statuses were last updated/fetched in IST
             }
         });
 
@@ -2401,7 +2399,7 @@ app.post('/getAllBookings', async (req, res) => {
 
     try {
         // Define currentTime at the beginning of the route handler
-        const currentTime = new Date(); 
+        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
 
         // Update statuses first (assumes updateBookingStatuses is defined elsewhere and accessible)
         // This ensures booking statuses are up-to-date before fetching.
@@ -2434,7 +2432,7 @@ app.post('/getAllBookings', async (req, res) => {
         }
 
         if (date) {
-            const dateObj = new Date(date);
+            const dateObj = dayjs(date).tz(IST_TIMEZONE).toDate(); // Treat input date as IST
             if (!isNaN(dateObj.getTime())) {
                 query += ` AND DATE(b.join_time) = DATE($${paramIndex})`;
                 queryParams.push(dateObj);
@@ -2501,7 +2499,7 @@ app.post('/getAllBookings', async (req, res) => {
         }
 
         if (date) {
-            const dateObj = new Date(date);
+            const dateObj = dayjs(date).tz(IST_TIMEZONE).toDate(); // Treat input date as IST
             if (!isNaN(dateObj.getTime())) {
                 countQuery += ` AND DATE(b.join_time) = DATE($${countParamIndex})`;
                 countParams.push(dateObj);
@@ -2534,17 +2532,17 @@ app.post('/getAllBookings', async (req, res) => {
         const bookings = result.rows.map(booking => {
             // Calculate time information based on status
             let timeInfo = {};
-            const joinTime = new Date(booking.join_time);
-            const endTime = new Date(booking.end_time);
+            const joinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
+            const endTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
 
             if (booking.status === 'booked') {
-                const timeUntilStart = Math.max(0, Math.ceil((joinTime - currentTime) / (1000 * 60)));
+                const timeUntilStart = Math.max(0, Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)));
                 timeInfo = {
                     time_until_service: timeUntilStart + ' minutes',
                     estimated_start: dayjs(joinTime).format('hh:mm A')
                 };
             } else if (booking.status === 'in_service') {
-                const timeUntilEnd = Math.max(0, Math.ceil((endTime - currentTime) / (1000 * 60)));
+                const timeUntilEnd = Math.max(0, Math.ceil((endTime.getTime() - currentTime.getTime()) / (1000 * 60)));
                 timeInfo = {
                     time_remaining: timeUntilEnd + ' minutes',
                     estimated_completion: dayjs(endTime).format('hh:mm A')
@@ -2585,7 +2583,7 @@ app.post('/getAllBookings', async (req, res) => {
 
         if (date) {
             statusSummaryQuery += ` AND DATE(b.join_time) = DATE($${statusSummaryParamIndex})`;
-            statusSummaryParams.push(date);
+            statusSummaryParams.push(dayjs(date).tz(IST_TIMEZONE).toDate()); // Treat input date as IST
             statusSummaryParamIndex++;
         }
         if (shop_id && Number.isInteger(parseInt(shop_id))) {
@@ -2638,7 +2636,7 @@ app.post('/getAllBookings', async (req, res) => {
             summary: {
                 total_bookings: totalCount,
                 status_breakdown: statusCounts,
-                last_status_update: new Date().toISOString()
+                last_status_update: dayjs().tz(IST_TIMEZONE).toISOString() // Timestamp of when statuses were last updated/fetched in IST
             }
         });
 
