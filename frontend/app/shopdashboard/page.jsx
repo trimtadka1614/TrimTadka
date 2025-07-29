@@ -133,114 +133,102 @@ const checkShopSubscriptionStatus = useCallback(async () => {
 
 // Function to subscribe the shop to push notifications
 const subscribeShop = useCallback(async () => {
+  // Use the consistently derived shopId here
+  if (!shopSwRegistration || !shopId || !VAPID_PUBLIC_KEY) {
+    console.warn('Cannot subscribe shop: Service Worker not registered, Shop not logged in, or VAPID Public Key missing.');
+    return;
+  }
+
+  if (isShopPushSubscribed) {
+    alert('This shop is already subscribed to push notifications!');
+    return;
+  }
+
   try {
-    alert("subscribeShop function started");
-    
-    if (!shopSwRegistration || !shopId || !VAPID_PUBLIC_KEY) {
-      const missingItems = [];
-      if (!shopSwRegistration) missingItems.push("Service Worker registration");
-      if (!shopId) missingItems.push("Shop ID");
-      if (!VAPID_PUBLIC_KEY) missingItems.push("VAPID Public Key");
-      
-      alert(`Cannot subscribe: Missing ${missingItems.join(', ')}`);
-      return;
-    }
-
-    if (isShopPushSubscribed) {
-      alert('Shop already subscribed to push notifications!');
-      return;
-    }
-
-    alert("Attempting to get push subscription...");
-
     const pushSubscription = await shopSwRegistration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
     });
-    
-    alert("Push subscription obtained successfully");
     console.log('Shop Push Subscription:', pushSubscription);
 
-    alert("Sending subscription to backend...");
-
+    // Send subscription to your backend's shop endpoint
     const response = await fetch(`${API_BASE_URL}/shop/subscribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        shopId: shopId,
+        shopId: shopId, // Use the consistently derived shopId
         subscription: pushSubscription,
       }),
     });
-
-    alert(`Backend response status: ${response.status}`);
 
     if (response.ok) {
       alert('Successfully subscribed shop to push notifications!');
       setIsShopPushSubscribed(true);
     } else {
       const errorData = await response.json();
-      alert(`Backend subscription failed: ${errorData.error || response.statusText}`);
+      alert(`Failed to subscribe shop: ${errorData.error || response.statusText}`);
+      // Optionally, unsubscribe from browser if backend failed to store
       await pushSubscription.unsubscribe();
     }
   } catch (error) {
-    alert(`Error in subscribeShop: ${error.message}`);
     console.error('Error subscribing shop to push:', error);
+    alert('An error occurred during shop subscription. Please try again.');
   }
-}, [shopSwRegistration, shopId, isShopPushSubscribed]);
+}, [shopSwRegistration, shopId, isShopPushSubscribed]); // Dependency changed to shopId
 
-// Similarly update unsubscribeShop with debugging:
-
+// Function to unsubscribe the shop from push notifications
 const unsubscribeShop = useCallback(async () => {
+  // Use the consistently derived shopId here
+  if (!shopSwRegistration || !shopId) {
+    console.warn('Cannot unsubscribe shop: Service Worker not registered or Shop not logged in.');
+    return;
+  }
+
+  if (!isShopPushSubscribed) {
+    alert('This shop is not subscribed to push notifications.');
+    return;
+  }
+
   try {
-    alert("unsubscribeShop function started");
-    
-    if (!shopSwRegistration || !shopId) {
-      alert('Cannot unsubscribe: Service Worker not registered or Shop not logged in.');
-      return;
-    }
-
-    if (!isShopPushSubscribed) {
-      alert('Shop is not subscribed to push notifications.');
-      return;
-    }
-
-    alert("Getting existing subscription...");
-    
     const subscription = await shopSwRegistration.pushManager.getSubscription();
     if (subscription) {
-      alert("Unsubscribing from browser...");
       await subscription.unsubscribe();
-      alert("Browser subscription removed.");
-    } else {
-      alert("No browser subscription found.");
+      console.log('Shop browser subscription removed.');
     }
 
-    alert("Telling backend to remove subscription...");
-
+    // Tell your backend to remove the shop's subscription
     const response = await fetch(`${API_BASE_URL}/shop/unsubscribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ shopId: shopId }),
+      body: JSON.stringify({ shopId: shopId }), // Use the consistently derived shopId
     });
-
-    alert(`Backend unsubscribe response status: ${response.status}`);
 
     if (response.ok) {
       alert('Successfully unsubscribed shop from push notifications.');
       setIsShopPushSubscribed(false);
     } else {
       const errorData = await response.json();
-      alert(`Backend unsubscribe failed: ${errorData.error || response.statusText}`);
+      alert(`Failed to unsubscribe shop from backend: ${errorData.error || response.statusText}`);
+      // Optionally, re-subscribe in browser if backend failed to remove
     }
   } catch (error) {
-    alert(`Error in unsubscribeShop: ${error.message}`);
     console.error('Error unsubscribing shop:', error);
+    alert('An error occurred during shop unsubscription. Please try again.');
   }
-}, [shopSwRegistration, shopId, isShopPushSubscribed]);
+}, [shopSwRegistration, shopId, isShopPushSubscribed]); // Dependency changed to shopId
+
+// Initial setup for shop service worker and subscription status
+useEffect(() => {
+  registerShopServiceWorker(); // Register SW on component mount for shops
+  // Only check subscription status if shopId is available
+  if (shopId) {
+    checkShopSubscriptionStatus(); 
+  }
+}, [shopId, registerShopServiceWorker, checkShopSubscriptionStatus]); // Dependency changed to shopId
     // Use a separate useEffect to fetch the shop's active status from the new API route
     useEffect(() => {
         const fetchShopStatus = async () => {
@@ -574,82 +562,26 @@ if (totalQueueMinutes > 0) {
         </div>
 
         {/* Notification Bell */}
-{shopId && (
-  <div className="flex flex-col items-center space-y-1 mt-3">
-    <button
-      onClick={async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        try {
-          alert("Bell button clicked!");
-          
-          // Check if service worker is supported
-          if (!('serviceWorker' in navigator)) {
-            alert("Service Worker not supported in this browser");
-            return;
-          }
-          
-          // Check if push manager is supported
-          if (!('PushManager' in window)) {
-            alert("Push messaging not supported in this browser");
-            return;
-          }
-          
-          // Check if we have registration
-          if (!shopSwRegistration) {
-            alert("Service Worker not registered yet");
-            return;
-          }
-          
-          // Check VAPID key
-          if (!VAPID_PUBLIC_KEY) {
-            alert("VAPID public key missing");
-            return;
-          }
-          
-          alert(`Current subscription status: ${isShopPushSubscribed}`);
-          
-          if (isShopPushSubscribed) {
-            alert("Attempting to unsubscribe...");
-            await unsubscribeShop();
-          } else {
-            alert("Attempting to subscribe...");
-            await subscribeShop();
-          }
-          
-        } catch (error) {
-          alert(`Error in button click: ${error.message}`);
-          console.error('Bell button error:', error);
-        }
-      }}
-      className={`p-2 rounded-full transition-colors duration-200 ${
-        isShopPushSubscribed
-          ? 'bg-green-500 text-white'
-          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-      }`}
-      title={
-        isShopPushSubscribed
-          ? "Unsubscribe from Push Notifications"
-          : "Subscribe to Push Notifications"
-      }
-      style={{
-        minWidth: '44px',
-        minHeight: '44px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        WebkitTapHighlightColor: 'transparent',
-      }}
-    >
-      <BellIcon className="h-6 w-6" />
-    </button>
-    <span className="text-[10px] text-white tracking-wider uppercase">
-      Enable Notifications
-    </span>
-  </div>
-)}
+        {shopId && (
+          <div className="flex flex-col items-center space-y-1 mt-3">
+            <button
+              onClick={isShopPushSubscribed ? unsubscribeShop : subscribeShop}
+              className={`p-2 rounded-full transition-colors duration-200 ${
+                isShopPushSubscribed
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+              title={
+                isShopPushSubscribed
+                  ? "Unsubscribe from Push Notifications"
+                  : "Subscribe to Push Notifications"
+              }
+            >
+              <BellIcon className="h-4 w-4" />
+            </button>
+            <span className="text-[10px] text-white tracking-wider uppercase">Enable Notifications</span>
+          </div>
+        )}
 
         {/* Logout Icon */}
         <button
