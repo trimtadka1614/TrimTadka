@@ -77,10 +77,10 @@ pool.connect(async (err, client, release) => { // Made async to use await
         return console.error('Error acquiring client:', err.stack);
     }
     try {
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this test connection
-        console.log('Successfully connected to the database and set timezone to IST!');
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
+        console.log('Successfully connected to the database!');
     } catch (tzErr) {
-        console.error('Error setting time zone on initial connection:', tzErr);
+        console.error('Error during initial connection:', tzErr); // Changed message as timezone setting is removed
     } finally {
         release(); // Release the client back to the pool
     }
@@ -627,7 +627,7 @@ app.get('/myshop/:shop_id', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         const result = await client.query(
             'SELECT shop_id, shop_name, lat, long, address, ph_number, is_active FROM shops WHERE shop_id = $1',
@@ -665,7 +665,7 @@ app.get('/shops', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         const result = await client.query(
             'SELECT shop_id, shop_name, lat, long, address, ph_number FROM shops WHERE is_active = true ORDER BY shop_name'
@@ -698,7 +698,7 @@ app.get('/shops/simple', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         // Base query to get shops with barbers and their services
         // Modified to include is_active status for both shops and employees
@@ -932,7 +932,7 @@ app.post('/shop_status', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         // Validate shop_id as it's now a primary filter for this route
         if (!shop_id || !Number.isInteger(parseInt(shop_id))) {
@@ -1193,7 +1193,7 @@ app.post('/register_service', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         const result = await client.query(
             `INSERT INTO services (service_name, service_duration_minutes)
@@ -1225,7 +1225,7 @@ app.get('/services', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         const result = await client.query(
             'SELECT * FROM services ORDER BY service_name'
@@ -1296,7 +1296,7 @@ app.post('/register_employee', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this transaction
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
         
         // Check shop existence and if it's active
         const shop = await client.query(
@@ -1415,7 +1415,7 @@ app.get('/shops/:shop_id/employees', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         const result = await client.query(`
             SELECT
@@ -1458,7 +1458,7 @@ async function updateBookingStatuses() {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this background task
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         await client.query('BEGIN'); // Start transaction
 
@@ -1626,7 +1626,7 @@ app.post('/bookings', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this transaction
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         await updateBookingStatuses(client); // Ensure statuses are fresh
 
@@ -1850,7 +1850,7 @@ app.post('/bookings/cancel', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this transaction
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         // 2. Verify Ownership and Status
         // FOR UPDATE locks the row to prevent race conditions during cancellation
@@ -1950,7 +1950,7 @@ app.post('/shop/bookings/cancel', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this transaction
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         // 2. Verify Shop Ownership of the Barber and Booking Status
         const bookingCheck = await client.query(
@@ -2042,7 +2042,7 @@ app.post('/shop/bookings/cancel', async (req, res) => {
 // as provided in the previous turn.
 
 async function updateSubsequentBookings(client, empId, cancelledBookingOriginalEndTime, cancelledServiceDurationMinutes, shopId) {
-    await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this helper function
+    // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
     const subsequentBookingsQuery = `
         SELECT booking_id, customer_id, join_time, end_time, service_duration_minutes, status
@@ -2189,7 +2189,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         // Define currentTime at the beginning of the route handler for consistent time calculations
         const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
@@ -2463,7 +2463,7 @@ app.post('/getAllBookings', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         // Define currentTime at the beginning of the route handler
         const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
@@ -2735,7 +2735,7 @@ app.put('/shops/:shop_id/status', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         // Update the 'is_active' status for the specified shop_id
         const result = await client.query(
@@ -2782,7 +2782,7 @@ app.put('/employees/:emp_id/status', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Set session timezone for this request
+        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'");
 
         const result = await client.query(
             `UPDATE employees SET is_active = $1 WHERE emp_id = $2 RETURNING *`,
