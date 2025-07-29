@@ -467,19 +467,7 @@ if (status === 'loading' || loading) {
     const topCustomer = customerCounts ? Object.keys(customerCounts).reduce((a, b) => (customerCounts[a] > customerCounts[b] ? a : b), null) : 'N/A';
 
     // Calculate estimated queue time
-    const getFilteredQueueBookings = () => {
-    if (!bookings) return [];
-
-    if (filterStatus === 'all') {
-        return bookings.filter(b => b.status === 'booked' || b.status === 'in_service');
-    } else if (filterStatus === 'booked' || filterStatus === 'in_service') {
-        return bookings.filter(b => b.status === filterStatus);
-    } else {
-        return []; // No queue bookings for 'completed' or 'cancelled' status filters
-    }
-};
-
-const currentQueueBookings = getFilteredQueueBookings();
+const currentQueueBookings = bookings?.filter(b => b.status === 'booked' || b.status === 'in_service') || [];
 
     let totalQueueMinutes = 0;
 
