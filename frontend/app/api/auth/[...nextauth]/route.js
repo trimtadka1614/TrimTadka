@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
 
 const authOptions = {
   providers: [
