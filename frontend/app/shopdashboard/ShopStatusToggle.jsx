@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'; // Import useEffect
 import axios from 'axios';
 import { PowerIcon, CheckIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 
-const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
+const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
 export default function ShopStatusToggle({ shopId, initialIsActive, onStatusChange }) {
     const [isActive, setIsActive] = useState(initialIsActive);
