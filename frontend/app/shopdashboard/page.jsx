@@ -562,39 +562,26 @@ if (totalQueueMinutes > 0) {
         </div>
 
         {/* Notification Bell */}
-  {shopId && (
-  <div className="flex flex-col items-center space-y-1 mt-3">
-    <button
-      onClick={(e) => {
-        // Changed from console.log to alert for direct on-device feedback
-        alert("Bell button clicked!");
-        isShopPushSubscribed ? unsubscribeShop() : subscribeShop();
-      }}
-      className={`p-2 rounded-full transition-colors duration-200 ${
-        isShopPushSubscribed
-          ? 'bg-green-500 text-white'
-          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-      }`}
-      title={
-        isShopPushSubscribed
-          ? "Unsubscribe from Push Notifications"
-          : "Subscribe to Push Notifications"
-      }
-      style={{
-        minWidth: '44px',     // Ensure minimum touch target size for iOS
-        minHeight: '44px',    // Ensure minimum touch target size for iOS
-        display: 'flex',      // Use flexbox to center the icon if button size increases
-        alignItems: 'center', // Center icon vertically
-        justifyContent: 'center', // Center icon horizontally
-        cursor: 'pointer',    // Explicitly set cursor to pointer
-        WebkitTapHighlightColor: 'transparent', // Remove default iOS tap highlight (optional, for aesthetics)
-      }}
-    >
-      <BellIcon className="h-6 w-6" /> {/* Keeping h-6 w-6 as previously suggested */}
-    </button>
-    <span className="text-[10px] text-white tracking-wider uppercase">Enable Notifications</span>
-  </div>
-)}
+   {shopId && (
+          <div className="flex flex-col items-center space-y-1 mt-3">
+            <button
+              onClick={isShopPushSubscribed ? unsubscribeShop : subscribeShop}
+              className={`p-2 rounded-full transition-colors duration-200 ${
+                isShopPushSubscribed
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+              title={
+                isShopPushSubscribed
+                  ? "Unsubscribe from Push Notifications"
+                  : "Subscribe to Push Notifications"
+              }
+            >
+              <BellIcon className="h-4 w-4" />
+            </button>
+            <span className="text-[10px] text-white tracking-wider uppercase">Enable Notifications</span>
+          </div>
+        )}
 
         {/* Logout Icon */}
         <button
