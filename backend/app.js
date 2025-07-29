@@ -77,6 +77,9 @@ pool.connect((err, client, release) => {
         return console.error('Error acquiring client:', err.stack);
     }
     console.log('Successfully connected to the database!');
+
+
+
     release(); // Release the client back to the pool
 });
 
@@ -117,7 +120,7 @@ function calculateWaitTime(queue, durations) {
 app.get('/health', (req, res) => {
     res.status(200).json({ 
         message: 'Server is running!', 
-        timestamp: new Date().toISOString(),
+        timestamp: dayjs().toISOString(), // Use dayjs for consistent timestamp
         // port: port // Port is not relevant for Vercel deployment
     });
 });
@@ -617,7 +620,7 @@ app.get('/profile', authenticateToken, (req, res) => {
     res.json({
         message: 'This is a protected route',
         user: req.user,
-        timestamp: new Date().toISOString()
+        timestamp: dayjs().toISOString() // Use dayjs for consistent timestamp
     });
 });
 
@@ -728,9 +731,10 @@ app.get('/shops/simple', async (req, res) => {
         `;
 
         const shopsResult = await pool.query(shopsQuery);
-        
+        const currentTimeIST = dayjs().tz("Asia/Kolkata");
         // Get current and future bookings for queue calculation for all shops
-        const currentTime = dayjs().toDate(); // Use dayjs for current time, then convert to Date object
+        const currentTime = (new Date(currentTimeIST.format("YYYY-MM-DD HH:mm:ss"))).toString(); // Use dayjs for current time, then convert to Date object
+        console.log("Current time in /shops/simple:", currentTime); // For debugging
         const bookingsQuery = `
             SELECT 
                 b.booking_id,
@@ -970,7 +974,8 @@ app.post('/shop_status', async (req, res) => {
         }
         
         // Get current and future bookings for queue calculation for the specific shop
-        const currentTime = dayjs().toDate(); // Use dayjs for current time, then convert to Date object
+        const currentTime = dayjs().tz("Asia/Kolkata").toDate(); // Use dayjs for current time, then convert to Date object
+        console.log("Current time in /shop_status:", currentTime); // For debugging
         const bookingsQuery = `
             SELECT 
                 b.booking_id,
@@ -1425,7 +1430,8 @@ async function updateBookingStatuses() {
         client = await pool.connect();
         await client.query('BEGIN'); // Start transaction
 
-        const currentTime = dayjs().toDate(); // Use dayjs for current time
+        const currentTime = dayjs().tz("Asia/Kolkata").toDate(); // Use dayjs for current time
+        console.log("Current time in updateBookingStatuses:", currentTime); // For debugging
 
         // 1. Update 'booked' to 'in_service'
         const inServiceResult = await client.query(
@@ -1593,7 +1599,8 @@ app.post('/bookings', async (req, res) => {
         await client.query('BEGIN');
         await updateBookingStatuses(client); // Ensure statuses are fresh
 
-        const currentTime = dayjs().toDate(); // Current time when the request is received
+        const currentTime = dayjs().tz("Asia/Kolkata").toDate(); // Current time when the request is received
+        console.log("Current time in /bookings:", currentTime); // For debugging
 
         const shopCheck = await client.query('SELECT shop_id, shop_name FROM shops WHERE shop_id = $1 AND is_active = TRUE', [shop_id]);
         if (shopCheck.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shop not found or inactive' }); }
@@ -2019,7 +2026,8 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
         return;
     }
 
-    const currentTime = dayjs().toDate(); // Use dayjs for current time
+    const currentTime = dayjs().tz("Asia/Kolkata").toDate(); // Use dayjs for current time
+    console.log("Current time in updateSubsequentBookings:", currentTime); // For debugging
 
     const timeToShift = cancelledServiceDurationMinutes * 60000; // minutes to ms
 
@@ -2149,7 +2157,8 @@ app.post('/getBookingsbycustomer', async (req, res) => {
 
     try {
         // Define currentTime at the beginning of the route handler for consistent time calculations
-        const currentTime = dayjs().toDate(); // Use dayjs for current time
+        const currentTime = dayjs().tz("Asia/Kolkata").toDate(); // Use dayjs for current time
+        console.log("Current time in /getBookingsbycustomer:", currentTime); // For debugging
 
         // It's good practice to update booking statuses before fetching,
         // ensuring the data is as current as possible.
@@ -2417,7 +2426,8 @@ app.post('/getAllBookings', async (req, res) => {
 
     try {
         // Define currentTime at the beginning of the route handler
-        const currentTime = dayjs().toDate(); // Use dayjs for current time
+        const currentTime = dayjs().tz("Asia/Kolkata").toDate(); // Use dayjs for current time
+        console.log("Current time in /getAllBookings:", currentTime); // For debugging
 
         // Update statuses first (assumes updateBookingStatuses is defined elsewhere and accessible)
         // This ensures booking statuses are up-to-date before fetching.
@@ -2617,7 +2627,7 @@ app.post('/getAllBookings', async (req, res) => {
         if (customer_id && Number.isInteger(parseInt(customer_id))) {
             statusSummaryQuery += ` AND b.customer_id = $${statusSummaryParamIndex}`;
             statusSummaryParams.push(parseInt(customer_id));
-            statusSummaryParamIndex++;
+            paramIndex++;
         }
         statusSummaryQuery += ` GROUP BY status`;
 
