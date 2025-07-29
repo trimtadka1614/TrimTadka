@@ -848,14 +848,12 @@ app.get('/shops/simple', async (req, res) => {
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    const joinTime = dayjs(customerBooking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
-                    const endTime = dayjs(customerBooking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
-                    
+                    // Ensure formatting uses IST
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
-                        join_time: dayjs(joinTime).format('HH:mm'),
+                        join_time: dayjs(customerBooking.join_time).tz(IST_TIMEZONE).format('HH:mm'),
                         service_duration: `${customerBooking.service_duration_minutes} mins`,
-                        expected_end_time: dayjs(endTime).format('HH:mm'),
+                        expected_end_time: dayjs(customerBooking.end_time).tz(IST_TIMEZONE).format('HH:mm'),
                         status: customerBooking.status,
                         services: customerBooking.service_type
                     };
@@ -1093,14 +1091,12 @@ app.post('/shop_status', async (req, res) => {
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    const joinTime = dayjs(customerBooking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
-                    const endTime = dayjs(customerBooking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
-                    
+                    // Ensure formatting uses IST
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
-                        join_time: dayjs(joinTime).format('HH:mm'),
+                        join_time: dayjs(customerBooking.join_time).tz(IST_TIMEZONE).format('HH:mm'),
                         service_duration: `${customerBooking.service_duration_minutes} mins`,
-                        expected_end_time: dayjs(endTime).format('HH:mm'),
+                        expected_end_time: dayjs(customerBooking.end_time).tz(IST_TIMEZONE).format('HH:mm'),
                         status: customerBooking.status,
                         services: customerBooking.service_type
                     };
@@ -2180,7 +2176,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         client = await pool.connect();
 
         // Define currentTime at the beginning of the route handler for consistent time calculations
-        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
+        const currentTime = dayjs().tz(IST_TIMEZONE); // Use dayjs object directly for consistency
 
         // It's good practice to update booking statuses before fetching,
         // ensuring the data is as current as possible.
@@ -2303,25 +2299,26 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         // Process and format each booking's data for the response
         const bookings = result.rows.map(booking => {
             let timeInfo = {}; // Object to hold time-related display information
-            const joinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
-            const endTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
+            // Parse DB times as IST explicitly for calculations and formatting
+            const joinTimeIST = dayjs(booking.join_time).tz(IST_TIMEZONE); 
+            const endTimeIST = dayjs(booking.end_time).tz(IST_TIMEZONE); 
 
             // Populate timeInfo based on the booking status
             if (booking.status === 'booked') {
-                const timeUntilStart = Math.max(0, Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)));
+                const timeUntilStart = Math.max(0, Math.ceil((joinTimeIST.toDate().getTime() - currentTime.toDate().getTime()) / (1000 * 60)));
                 timeInfo = {
                     time_until_service: timeUntilStart + ' minutes',
-                    estimated_start: dayjs(joinTime).format('hh:mm A')
+                    estimated_start: joinTimeIST.format('hh:mm A')
                 };
             } else if (booking.status === 'in_service') {
-                const timeUntilEnd = Math.max(0, Math.ceil((endTime.getTime() - currentTime.getTime()) / (1000 * 60)));
+                const timeUntilEnd = Math.max(0, Math.ceil((endTimeIST.toDate().getTime() - currentTime.toDate().getTime()) / (1000 * 60)));
                 timeInfo = {
                     time_remaining: timeUntilEnd + ' minutes',
-                    estimated_completion: dayjs(endTime).format('hh:mm A')
+                    estimated_completion: endTimeIST.format('hh:mm A')
                 };
             } else if (booking.status === 'completed') {
                 timeInfo = {
-                    completed_at: dayjs(endTime).format('MMM DD, YYYY - hh:mm A'),
+                    completed_at: endTimeIST.format('MMM DD, YYYY - hh:mm A'),
                     duration_was: booking.service_duration_minutes + ' minutes'
                 };
             }
@@ -2329,10 +2326,10 @@ app.post('/getBookingsbycustomer', async (req, res) => {
             return {
                 ...booking, // Include all original booking fields
                 formatted_times: {
-                    join_time: dayjs(joinTime).format('YYYY-MM-DD HH:mm:ss'),
-                    end_time: dayjs(endTime).format('YYYY-MM-DD HH:mm:ss'),
-                    join_time_display: dayjs(joinTime).format('MMM DD, YYYY - hh:mm A'),
-                    end_time_display: dayjs(endTime).format('MMM DD, YYYY - hh:mm A')
+                    join_time: joinTimeIST.format('YYYY-MM-DD HH:mm:ss'),
+                    end_time: endTimeIST.format('YYYY-MM-DD HH:mm:ss'),
+                    join_time_display: joinTimeIST.format('MMM DD, YYYY - hh:mm A'),
+                    end_time_display: endTimeIST.format('MMM DD, YYYY - hh:mm A')
                 },
                 ...timeInfo // Add status-specific time information
             };
@@ -2453,7 +2450,7 @@ app.post('/getAllBookings', async (req, res) => {
         client = await pool.connect();
 
         // Define currentTime at the beginning of the route handler
-        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
+        const currentTime = dayjs().tz(IST_TIMEZONE); // Use dayjs object directly for consistency
 
         // Update statuses first (assumes updateBookingStatuses is defined elsewhere and accessible)
         // This ensures booking statuses are up-to-date before fetching.
@@ -2586,24 +2583,25 @@ app.post('/getAllBookings', async (req, res) => {
         const bookings = result.rows.map(booking => {
             // Calculate time information based on status
             let timeInfo = {};
-            const joinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
-            const endTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
+            // Parse DB times as IST explicitly for calculations and formatting
+            const joinTimeIST = dayjs(booking.join_time).tz(IST_TIMEZONE); 
+            const endTimeIST = dayjs(booking.end_time).tz(IST_TIMEZONE); 
 
             if (booking.status === 'booked') {
-                const timeUntilStart = Math.max(0, Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)));
+                const timeUntilStart = Math.max(0, Math.ceil((joinTimeIST.toDate().getTime() - currentTime.toDate().getTime()) / (1000 * 60)));
                 timeInfo = {
                     time_until_service: timeUntilStart + ' minutes',
-                    estimated_start: dayjs(joinTime).format('hh:mm A')
+                    estimated_start: joinTimeIST.format('hh:mm A')
                 };
             } else if (booking.status === 'in_service') {
-                const timeUntilEnd = Math.max(0, Math.ceil((endTime.getTime() - currentTime.getTime()) / (1000 * 60)));
+                const timeUntilEnd = Math.max(0, Math.ceil((endTimeIST.toDate().getTime() - currentTime.toDate().getTime()) / (1000 * 60)));
                 timeInfo = {
                     time_remaining: timeUntilEnd + ' minutes',
-                    estimated_completion: dayjs(endTime).format('hh:mm A')
+                    estimated_completion: endTimeIST.format('hh:mm A')
                 };
             } else if (booking.status === 'completed') {
                 timeInfo = {
-                    completed_at: dayjs(endTime).format('MMM DD, YYYY - hh:mm A'),
+                    completed_at: endTimeIST.format('MMM DD, YYYY - hh:mm A'),
                     duration_was: booking.service_duration_minutes + ' minutes'
                 };
             }
@@ -2611,10 +2609,10 @@ app.post('/getAllBookings', async (req, res) => {
             return {
                 ...booking,
                 formatted_times: {
-                    join_time: dayjs(joinTime).format('YYYY-MM-DD HH:mm:ss'),
-                    end_time: dayjs(endTime).format('YYYY-MM-DD HH:mm:ss'),
-                    join_time_display: dayjs(joinTime).format('MMM DD, YYYY - hh:mm A'),
-                    end_time_display: dayjs(endTime).format('MMM DD, YYYY - hh:mm A')
+                    join_time: joinTimeIST.format('YYYY-MM-DD HH:mm:ss'),
+                    end_time: endTimeIST.format('YYYY-MM-DD HH:mm:ss'),
+                    join_time_display: joinTimeIST.format('MMM DD, YYYY - hh:mm A'),
+                    end_time_display: endTimeIST.format('MMM DD, YYYY - hh:mm A')
                 },
                 ...timeInfo
             };
