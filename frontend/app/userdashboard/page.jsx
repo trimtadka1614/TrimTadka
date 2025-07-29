@@ -182,11 +182,17 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
 
     setShowProgressBar(true);
 
-    console.log("🔍 === FIXED TIME LOGIC START ===");
+    console.log("🔍 === TIMEZONE FIXED LOGIC START ===");
     console.log("📱 User Agent:", navigator.userAgent);
     console.log("🌍 Timezone:", Intl.DateTimeFormat().resolvedOptions().timeZone);
     console.log("⏰ Estimated Start Time Input:", estimatedStartTime);
-    console.log("⏰ Join Time Input:", joinTime);
+    console.log("⏰ Join Time Input (UTC):", joinTime);
+
+    // TIMEZONE FIX: Convert joinTime from UTC to local timezone (IST)
+    const joinTimeLocal = dayjs(joinTime); // dayjs automatically converts to local timezone
+    const joinTimeIST = joinTimeLocal.format("YYYY-MM-DD HH:mm:ss");
+    console.log("⏰ Join Time (Local/IST):", joinTimeIST);
+    console.log("⏰ Join Time Unix:", joinTimeLocal.unix());
 
     const [hourStr, minuteStrPart] = estimatedStartTime.split(":");
     const [minuteStr, meridian] = minuteStrPart.split(" ");
@@ -199,55 +205,43 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
       hour = 0;
     }
 
-    const now = dayjs();
+    // Use the converted joinTime as the start reference instead of "now"
+    const startTime = joinTimeLocal; // This is when the user joined (in local time)
+    const now = dayjs(); // Current time
+    
+    console.log("🚀 Start Time (when joined):", startTime.format("YYYY-MM-DD HH:mm:ss"));
     console.log("⏰ Current time:", now.format("YYYY-MM-DD HH:mm:ss"));
 
-    // FIXED LOGIC: Create end time for TODAY first
-    let end = now.hour(hour).minute(minute).second(0).millisecond(0);
-    console.log("🎯 End time (today):", end.format("YYYY-MM-DD HH:mm:ss"));
+    // Create end time based on the same date as joinTime (not current date)
+    let end = startTime.hour(hour).minute(minute).second(0).millisecond(0);
+    console.log("🎯 End time (same day as join):", end.format("YYYY-MM-DD HH:mm:ss"));
 
-    // NEW LOGIC: Determine if this should be today or tomorrow based on context
-    const timeDiffMinutes = end.diff(now, 'minute');
-    console.log("⏰ Time difference from now:", timeDiffMinutes, "minutes");
-
-    if (timeDiffMinutes < -30) {
-      // If the time is more than 30 minutes in the past, assume next day
+    // Check if we need to move to next day based on join time, not current time
+    if (end.isBefore(startTime) || end.isSame(startTime)) {
       end = end.add(1, "day");
       console.log("📅 End time adjusted to NEXT day:", end.format("YYYY-MM-DD HH:mm:ss"));
-    } else if (timeDiffMinutes < 0) {
-      // If it's slightly in the past (0-30 min), this might be a service that already started
-      console.log("⚠️ Service time appears to be in the recent past");
-      setProgress(100);
-      setDebugInfo({
-        currentTime: now.format("HH:mm:ss"),
-        targetTime: end.format("HH:mm:ss"),
-        remainingTime: 0,
-        totalDuration: Math.abs(timeDiffMinutes * 60),
-        percentage: "100.000000",
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        status: "Service already started"
-      });
-      setShowProgressBar(true);
-      return () => {};
-    } else {
-      console.log("✅ End time is in the future (today)");
     }
 
-    const totalDurationFromNow = end.diff(now, "second");
-    console.log("⏱️ Total Duration:", totalDurationFromNow, "seconds");
-    console.log("📊 Duration in hours:", (totalDurationFromNow / 3600).toFixed(2));
+    // Calculate total duration from join time to end time
+    const totalDurationFromJoin = end.diff(startTime, "second");
+    console.log("⏱️ Total Duration (from join to end):", totalDurationFromJoin, "seconds");
+    console.log("📊 Duration in hours:", (totalDurationFromJoin / 3600).toFixed(2));
 
-    if (totalDurationFromNow <= 0) {
-      console.warn("⚠️ Estimated time is in the past or now");
+    // Calculate elapsed time since joining
+    const elapsedSinceJoin = now.diff(startTime, "second");
+    console.log("⏳ Elapsed since join:", elapsedSinceJoin, "seconds");
+
+    if (totalDurationFromJoin <= 0) {
+      console.warn("⚠️ Invalid duration calculation");
       setProgress(100);
       setDebugInfo({
+        joinTimeLocal: joinTimeIST,
         currentTime: now.format("HH:mm:ss"),
         targetTime: end.format("HH:mm:ss"),
         remainingTime: 0,
         totalDuration: 0,
         percentage: "100.000000",
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        status: "Service completed"
+        status: "Invalid duration"
       });
       return () => {};
     }
@@ -257,25 +251,31 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
 
       if (timestamp - lastUpdateRef.current >= 1000) {
         const currentTime = dayjs();
-        const remainingTime = end.diff(currentTime, "second");
-        const elapsedTime = totalDurationFromNow - remainingTime;
+        const elapsedTime = currentTime.diff(startTime, "second");
         
+        // Calculate progress based on elapsed time since joining
         const percentage = Math.max(
           0,
-          Math.min((elapsedTime / totalDurationFromNow) * 100, 100)
+          Math.min((elapsedTime / totalDurationFromJoin) * 100, 100)
         );
 
+        const remainingTime = Math.max(0, totalDurationFromJoin - elapsedTime);
+
         console.log("🔄 Current:", currentTime.format("HH:mm:ss"));
+        console.log("🚀 Started:", startTime.format("HH:mm:ss"));
         console.log("🎯 Target:", end.format("HH:mm:ss"));
-        console.log("⏳ Remaining:", remainingTime, "seconds");
+        console.log("⏳ Elapsed since join:", elapsedTime, "seconds");
         console.log("📊 Progress:", percentage.toFixed(6), "%");
 
         setProgress(percentage);
         setDebugInfo({
+          joinTimeLocal: joinTimeIST,
           currentTime: currentTime.format("HH:mm:ss"),
+          startTime: startTime.format("HH:mm:ss"),
           targetTime: end.format("HH:mm:ss"),
+          elapsedTime,
           remainingTime,
-          totalDuration: totalDurationFromNow,
+          totalDuration: totalDurationFromJoin,
           percentage: percentage.toFixed(6),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
         });
@@ -325,8 +325,8 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
         <div
           className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-500 ease-linear"
           style={{ 
-            width: `${Math.max(progress, progress > 0 ? 1 : 0)}%`,
-            minWidth: progress > 0 ? '3px' : '0px',
+            width: `${progress}%`,
+            minWidth: progress > 0 ? '2px' : '0px',
             transform: 'translateZ(0)'
           }}
         />
@@ -336,14 +336,16 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
         {Math.round(progress)}% completed
       </p>
       
-      {/* Clean debug info */}
+      {/* Detailed debug info */}
       <div className="text-xs text-gray-500 mt-1 space-y-1 bg-gray-100 p-2 rounded">
-        <div><strong>Progress:</strong> {debugInfo.percentage || "100.000000"}%</div>
-        <div><strong>Current:</strong> {debugInfo.currentTime || "N/A"}</div>
-        <div><strong>Target:</strong> {debugInfo.targetTime || "N/A"}</div>
+        <div><strong>Progress:</strong> {debugInfo.percentage || "0"}%</div>
+        <div><strong>Joined:</strong> {debugInfo.joinTimeLocal}</div>
+        <div><strong>Started:</strong> {debugInfo.startTime}</div>
+        <div><strong>Current:</strong> {debugInfo.currentTime}</div>
+        <div><strong>Target:</strong> {debugInfo.targetTime}</div>
+        <div><strong>Elapsed:</strong> {debugInfo.elapsedTime ? Math.round(debugInfo.elapsedTime / 60) : 0}min</div>
         <div><strong>Remaining:</strong> {debugInfo.remainingTime ? Math.round(debugInfo.remainingTime / 60) : 0}min</div>
-        <div><strong>Total Duration:</strong> {debugInfo.totalDuration ? Math.round(debugInfo.totalDuration / 60) : 0}min</div>
-        {debugInfo.status && <div><strong>Status:</strong> {debugInfo.status}</div>}
+        <div><strong>Total:</strong> {debugInfo.totalDuration ? Math.round(debugInfo.totalDuration / 60) : 0}min</div>
       </div>
     </div>
   );
