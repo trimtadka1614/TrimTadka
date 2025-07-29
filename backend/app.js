@@ -813,7 +813,7 @@ const bookingEndTime = dayjs.tz(booking.end_time, IST_TIMEZONE).toDate();
                 }
 
                 const diff = Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330;
-finalEstimatedWaitTime = diff === 330 ? 0 : Math.abs(diff);
+finalEstimatedWaitTime = diff === -330 ? 0 : Math.abs(diff);
 
 
 
@@ -1061,7 +1061,7 @@ const bookingEndTime = dayjs.tz(booking.end_time, IST_TIMEZONE).toDate();
                 }
 
              const diff = Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330;
- finalEstimatedWaitTime = diff === 330 ? 0 : Math.abs(diff);
+ finalEstimatedWaitTime = diff === -330 ? 0 : Math.abs(diff);
 
 
 
@@ -2315,7 +2315,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
             // Populate timeInfo based on the booking status
             if (booking.status === 'booked') {
                const diff = Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330;
-const timeUntilStart = diff === 330 ? 0 : Math.abs(diff);
+const timeUntilStart = diff === -330 ? 0 : Math.abs(diff);
 
 
                 timeInfo = {
@@ -2600,7 +2600,7 @@ app.post('/getAllBookings', async (req, res) => {
 
             if (booking.status === 'booked') {
               const diff = Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330;
-const timeUntilStart = diff === 330 ? 0 : Math.abs(diff);
+const timeUntilStart = diff === -330 ? 0 : Math.abs(diff);
 
 
                 timeInfo = {
