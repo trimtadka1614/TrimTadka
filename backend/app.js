@@ -2753,9 +2753,6 @@ app.put('/employees/:emp_id/status', async (req, res) => {
         res.status(500).json({ error: 'Server error while updating employee status.' });
     }
 });
-
-
-
 // Start the server
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
