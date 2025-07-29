@@ -697,7 +697,7 @@ app.get('/shops/simple', async (req, res) => {
         // Base query to get shops with barbers and their services
         // Modified to include is_active status for both shops and employees
         const shopsQuery = `
-            SELECT
+            SELECT 
                 s.shop_id,
                 s.shop_name,
                 s.lat,
@@ -710,8 +710,8 @@ app.get('/shops/simple', async (req, res) => {
                 e.is_active AS emp_is_active, -- Include employee's active status
                 COALESCE(
                     json_agg(
-                        CASE
-                            WHEN srv.service_id IS NOT NULL
+                        CASE 
+                            WHEN srv.service_id IS NOT NULL 
                             THEN json_build_object(
                                 'service_id', srv.service_id,
                                 'service_name', srv.service_name,
@@ -732,11 +732,11 @@ app.get('/shops/simple', async (req, res) => {
         `;
 
         const shopsResult = await client.query(shopsQuery); // Use client here
-
+        
         // Get current and future bookings for queue calculation for all shops
-        const currentTimeIST = dayjs().tz(IST_TIMEZONE); // Get current time in IST using Day.js
+        const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
         const bookingsQuery = `
-            SELECT
+            SELECT 
                 b.booking_id,
                 b.shop_id,
                 b.emp_id,
@@ -753,14 +753,13 @@ app.get('/shops/simple', async (req, res) => {
             AND b.end_time > $1 -- Consider all active bookings whose end time is in the future
             ORDER BY b.join_time ASC
         `;
-
-        // Pass the current IST time (as a Date object, which PG can handle)
-        const bookingsResult = await client.query(bookingsQuery, [currentTimeIST.toDate()]);
+        
+        const bookingsResult = await client.query(bookingsQuery, [currentTime]); // Use client here
         const bookings = bookingsResult.rows;
 
         // Group shops data
         const shopsMap = new Map();
-
+        
         shopsResult.rows.forEach(row => {
             if (!shopsMap.has(row.shop_id)) {
                 shopsMap.set(row.shop_id, {
@@ -778,60 +777,54 @@ app.get('/shops/simple', async (req, res) => {
                     barbers: []
                 });
             }
-
+            
             const shop = shopsMap.get(row.shop_id);
-
+            
             // Add barber if exists and not already added
             if (row.emp_id && !shop.barbers.some(b => b.emp_id === row.emp_id)) {
                 const empBookings = bookings.filter(b => b.emp_id === row.emp_id);
-
+                
                 // Calculate queue info
-                const totalInQueue = empBookings.length;
+                const totalInQueue = empBookings.length; 
                 const inServiceBooking = empBookings.find(b => b.status === 'in_service');
-
+                
                 // Calculate estimated wait time
                 let finalEstimatedWaitTime = 0;
-                // Start with current time in IST as the reference point for calculating next available slot
-                let lastBookingEndTimeForCalculation = currentTimeIST.clone(); // Use dayjs object for consistent timezone ops
+                // Start with current time as the reference point for calculating next available slot (in IST)
+                let lastBookingEndTime = dayjs(currentTime).tz(IST_TIMEZONE).toDate(); 
 
                 // Sort all active bookings by join_time to process them sequentially
                 const sortedActiveBookings = empBookings
-                    .sort((a, b) => dayjs(a.join_time).tz(IST_TIMEZONE).valueOf() - dayjs(b.join_time).tz(IST_TIMEZONE).valueOf());
+                    .sort((a, b) => dayjs(a.join_time).tz(IST_TIMEZONE).toDate().getTime() - dayjs(b.join_time).tz(IST_TIMEZONE).toDate().getTime());
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTimeIST = dayjs(booking.join_time).tz(IST_TIMEZONE);
-                    const bookingEndTimeIST = dayjs(booking.end_time).tz(IST_TIMEZONE);
+                    const bookingJoinTime = dayjs(booking.join_time).tz(IST_TIMEZONE).toDate();
+                    const bookingEndTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate();
 
                     if (booking.status === 'in_service') {
-                        // If a booking is 'in_service', the next booking cannot start until this one ends, plus a buffer
-                        lastBookingEndTimeForCalculation = dayjs.max(lastBookingEndTimeForCalculation, bookingEndTimeIST.add(5, 'minutes'));
+                        lastBookingEndTime = dayjs(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
                     } else if (booking.status === 'booked') {
-                        // The actual start time for this 'booked' slot is the later of:
-                        // 1. Its scheduled join_time
-                        // 2. The calculated end time of the previous booking in the sequence (including buffer)
-                        const actualStartTimeForThisBooking = dayjs.max(bookingJoinTimeIST, lastBookingEndTimeForCalculation);
-
-                        // The end time of this booking, considering its service duration
-                        lastBookingEndTimeForCalculation = actualStartTimeForThisBooking.add(booking.service_duration_minutes, 'minutes').add(5, 'minutes'); // Add 5 min buffer
+                        const potentialStartTimeAfterPrevious = dayjs(lastBookingEndTime).tz(IST_TIMEZONE).toDate(); 
+                        const actualStartTimeForThisBooking = dayjs(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime())).tz(IST_TIMEZONE).toDate();
+                        
+                        lastBookingEndTime = dayjs(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000).tz(IST_TIMEZONE).toDate(); // Add 5 min buffer
                     }
                 }
 
-                // Calculate the difference between the final calculated end time and the current time
-                // Ensure both are in IST and calculate the difference in minutes
-                finalEstimatedWaitTime = Math.max(0, lastBookingEndTimeForCalculation.diff(currentTimeIST, 'minutes'));
+                finalEstimatedWaitTime = Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)));
 
                 // Find customer's booking if customer_id is provided
                 let customerBooking = null;
                 let customerQueuePosition = null;
-
+                
                 if (customer_id) {
-                    customerBooking = empBookings.find(b =>
+                    customerBooking = empBookings.find(b => 
                         b.customer_id === parseInt(customer_id) && b.status !== 'completed' && b.status !== 'cancelled'
                     );
-
+                    
                     if (customerBooking) {
-                        customerQueuePosition = sortedActiveBookings.findIndex(b =>
+                        customerQueuePosition = sortedActiveBookings.findIndex(b => 
                             b.booking_id === customerBooking.booking_id
                         ) + 1; // +1 because array indices are 0-based
                     }
@@ -846,8 +839,8 @@ app.get('/shops/simple', async (req, res) => {
                         total_people_in_queue: totalInQueue, // Now includes in_service and booked
                         queue_position: totalInQueue + 1, // Position in the overall active queue for new bookings
                         estimated_wait_time: finalEstimatedWaitTime > 0 ? `${finalEstimatedWaitTime} mins` : "No wait",
-                        current_status: inServiceBooking ?
-                            `Serving ${inServiceBooking.customer_name}` :
+                        current_status: inServiceBooking ? 
+                            `Serving ${inServiceBooking.customer_name}` : 
                             (totalInQueue > 0 ? "Ready for next customer" : "Available"),
                         ...(customerQueuePosition !== null && { customer_queue_position: customerQueuePosition }) // Conditionally add customer's specific queue position
                     }
@@ -855,14 +848,14 @@ app.get('/shops/simple', async (req, res) => {
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    const joinTime = dayjs(customerBooking.join_time).tz(IST_TIMEZONE); // Convert to IST Day.js object
-                    const endTime = dayjs(customerBooking.end_time).tz(IST_TIMEZONE); // Convert to IST Day.js object
-
+                    const joinTime = dayjs(customerBooking.join_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
+                    const endTime = dayjs(customerBooking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
+                    
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
-                        join_time: joinTime.format('HH:mm'),
+                        join_time: dayjs(joinTime).format('HH:mm'),
                         service_duration: `${customerBooking.service_duration_minutes} mins`,
-                        expected_end_time: endTime.format('HH:mm'),
+                        expected_end_time: dayjs(endTime).format('HH:mm'),
                         status: customerBooking.status,
                         services: customerBooking.service_type
                     };
@@ -874,17 +867,17 @@ app.get('/shops/simple', async (req, res) => {
 
         // Convert map to array and calculate distances if coordinates provided
         const shops = Array.from(shopsMap.values());
-
+        
         if (lat && long) {
             const userLocation = { latitude: parseFloat(lat), longitude: parseFloat(long) };
-
+            
             shops.forEach(shop => {
                 if (shop.location.coordinates.lat && shop.location.coordinates.long) {
                     const shopLocation = {
                         latitude: shop.location.coordinates.lat,
                         longitude: shop.location.coordinates.long
                     };
-
+                    
                     // Ensure haversine function is available (e.g., imported or defined elsewhere)
                     const distance = haversine(userLocation, shopLocation);
                     shop.location.distance_from_you = `${(distance / 1000).toFixed(1)} km`;
@@ -892,7 +885,7 @@ app.get('/shops/simple', async (req, res) => {
                     shop.location.distance_from_you = "Distance unavailable";
                 }
             });
-
+            
             // Sort by distance (if haversine is implemented)
             shops.sort((a, b) => {
                 const distA = parseFloat(a.location.distance_from_you) || Infinity;
@@ -911,7 +904,7 @@ app.get('/shops/simple', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching shops with barber details:', error);
-        res.status(500).json({
+        res.status(500).json({ 
             error: 'Server error while fetching shops with barber details',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
@@ -919,6 +912,8 @@ app.get('/shops/simple', async (req, res) => {
         if (client) client.release();
     }
 });
+
+
 // Get shops with detailed barber info & queue status (renamed to /shop_status and changed to POST)
 // Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' and 'haversine' are imported if used.
 // Example imports if not already present:
