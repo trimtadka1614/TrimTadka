@@ -330,6 +330,8 @@ function BookingModal({
       if (response.ok) {
         setBookingMessage(data.message || "Booking created successfully!");
         onBookingComplete(true, data.booking); // Pass success and booking data
+        // Close the modal after a successful booking
+        onClose();
       } else {
         setBookingMessage(data.error || "Failed to create booking.");
         setBookingErrorDetails(data.details || "");
@@ -353,7 +355,7 @@ function BookingModal({
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 animate-fade-in">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-scale-up">
         <div className="sticky top-0 bg-white border-b border-[#cb3a1e] p-6 flex items-center justify-between">
-          <h2 className="text-2xl uppercase tracking-wider  font-bold text-gray-900 flex items-center">
+          <h2 className="text-2xl uppercase tracking-wider font-bold text-gray-900 flex items-center">
             <CalendarDaysIcon className="h-7 w-7 mr-3 text-[#cb3a1e]" />
             Book Your Service
           </h2>
