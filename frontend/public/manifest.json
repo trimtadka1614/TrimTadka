@@ -1,0 +1,22 @@
+{
+  "name": "TrimTadka - Smart Barber Queue System",
+  "short_name": "TrimTadka",
+  "description": "Book your next grooming appointment or manage your salon with ease.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#cb3a1e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/trimtadka.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/trimtadka.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
