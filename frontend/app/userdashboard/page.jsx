@@ -171,6 +171,7 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
   const rafRef = useRef(null);
   const isActiveRef = useRef(true);
   const lastUpdateRef = useRef(0);
+  const progressBarRef = useRef(null); // Add ref for direct DOM manipulation
 
   useEffect(() => {
     if (!estimatedStartTime || estimatedStartTime.trim() === "") {
@@ -225,7 +226,19 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
         );
 
         console.log("Progress (RAF):", percentage);
+        
+        // Update React state
         setProgress(percentage);
+        
+        // FORCE DOM update for Android compatibility
+        if (progressBarRef.current) {
+          progressBarRef.current.style.width = `${percentage}%`;
+          // Force repaint on Android
+          progressBarRef.current.style.transform = `translateZ(0)`;
+          // Trigger reflow
+          progressBarRef.current.offsetHeight;
+        }
+        
         lastUpdateRef.current = timestamp;
 
         if (percentage >= 100) {
@@ -271,14 +284,28 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
 
       <div className="w-full h-2 bg-gray-300 rounded-full shadow-inner">
         <div
-          className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-500 ease-linear"
-          style={{ width: `${progress}%` }}
+          ref={progressBarRef}
+          className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500"
+          style={{ 
+            width: `${progress}%`,
+            // Remove CSS transitions that might not work on Android
+            transition: 'none',
+            // Force hardware acceleration
+            transform: 'translateZ(0)',
+            // Ensure proper rendering
+            willChange: 'width'
+          }}
         />
       </div>
 
       <p className="text-sm font-bold tracking-wider uppercase text-gray-600 mt-1 text-right">
         {Math.round(progress)}% completed
       </p>
+      
+      {/* Debug display to verify the value is updating */}
+      <div className="text-xs text-gray-500 mt-1">
+        Debug: {progress.toFixed(6)}%
+      </div>
     </div>
   );
 };
