@@ -289,6 +289,9 @@ function BookingModal({
   const [isBookingLoading, setIsBookingLoading] = useState(false);
   const [bookingErrorDetails, setBookingErrorDetails] = useState("");
 
+  // Initialize useNavigate hook
+  const navigate = useNavigate();
+
   const handleServiceChange = (serviceId) => {
     setSelectedServiceIds((prevSelected) =>
       prevSelected.includes(serviceId)
@@ -330,8 +333,14 @@ function BookingModal({
       if (response.ok) {
         setBookingMessage(data.message || "Booking created successfully!");
         onBookingComplete(true, data.booking); // Pass success and booking data
-        // Close the modal after a successful booking
+
+        // Close the modal
         onClose();
+
+        // Redirect to user dashboard after a short delay (optional, but can be good UX)
+        setTimeout(() => {
+          navigate("/userdashboard");
+        }, 300); // Redirect after 300ms to allow modal close animation if any
       } else {
         setBookingMessage(data.error || "Failed to create booking.");
         setBookingErrorDetails(data.details || "");
