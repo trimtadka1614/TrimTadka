@@ -217,9 +217,16 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     } else if (timeDiffMinutes < 0) {
       // If it's slightly in the past (0-30 min), this might be a service that already started
       console.log("⚠️ Service time appears to be in the recent past");
-      // You might want to handle this case differently based on your app's logic
-      // For now, we'll set progress to 100%
       setProgress(100);
+      setDebugInfo({
+        currentTime: now.format("HH:mm:ss"),
+        targetTime: end.format("HH:mm:ss"),
+        remainingTime: 0,
+        totalDuration: Math.abs(timeDiffMinutes * 60),
+        percentage: "100.000000",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        status: "Service already started"
+      });
       setShowProgressBar(true);
       return () => {};
     } else {
@@ -233,6 +240,15 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     if (totalDurationFromNow <= 0) {
       console.warn("⚠️ Estimated time is in the past or now");
       setProgress(100);
+      setDebugInfo({
+        currentTime: now.format("HH:mm:ss"),
+        targetTime: end.format("HH:mm:ss"),
+        remainingTime: 0,
+        totalDuration: 0,
+        percentage: "100.000000",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        status: "Service completed"
+      });
       return () => {};
     }
 
@@ -322,11 +338,12 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
       
       {/* Clean debug info */}
       <div className="text-xs text-gray-500 mt-1 space-y-1 bg-gray-100 p-2 rounded">
-        <div><strong>Progress:</strong> {debugInfo.percentage}%</div>
-        <div><strong>Current:</strong> {debugInfo.currentTime}</div>
-        <div><strong>Target:</strong> {debugInfo.targetTime}</div>
-        <div><strong>Remaining:</strong> {Math.round(debugInfo.remainingTime / 60)}min</div>
-        <div><strong>Total Duration:</strong> {Math.round(debugInfo.totalDuration / 60)}min</div>
+        <div><strong>Progress:</strong> {debugInfo.percentage || "100.000000"}%</div>
+        <div><strong>Current:</strong> {debugInfo.currentTime || "N/A"}</div>
+        <div><strong>Target:</strong> {debugInfo.targetTime || "N/A"}</div>
+        <div><strong>Remaining:</strong> {debugInfo.remainingTime ? Math.round(debugInfo.remainingTime / 60) : 0}min</div>
+        <div><strong>Total Duration:</strong> {debugInfo.totalDuration ? Math.round(debugInfo.totalDuration / 60) : 0}min</div>
+        {debugInfo.status && <div><strong>Status:</strong> {debugInfo.status}</div>}
       </div>
     </div>
   );
