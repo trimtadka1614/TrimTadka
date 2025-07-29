@@ -11,11 +11,5 @@
       "src": "/(.*)",
       "dest": "/app.js"
     }
-  ],
-  "env": {
-   "DATABASE_URL": "postgresql://postgres.bsmolpnyayxlbfyhxgyp:sourjya@sonu@aws-0-ap-south-1.pooler.supabase.com:6543/postgres",
-"JWT_SECRET": "77456272be896fc4161fac627c8c3132cf70e8faa07fe60c9e1b1c6ac23664b25b94ca11bf49726935d773a76dd306aae94eb614bf8316fb1449c82d6a4c4319",
-"VAPID_PUBLIC_KEY": "BPcqoWbcYiRpjV_21crv7YmrTKDClTso_WihidTbA7mSrIk45D84dbfP8uyGZCQBPMNYVcmL5ToXLAf2uZXFXFo",
-"VAPID_PRIVATE_KEY": "G43gDRQCeh3oAn_RGOQHmoWdhO_jl1ah9YlCuEuxBOA"
-  }
+  ]
 }
