@@ -169,42 +169,9 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
   const [progress, setProgress] = useState(0);
   const [showProgressBar, setShowProgressBar] = useState(true);
   const [updateCount, setUpdateCount] = useState(0);
-  const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const isActiveRef = useRef(true);
   const lastUpdateRef = useRef(0);
-
-  // Draw progress bar on canvas
-  const drawProgressBar = (percentage) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-
-    // Clear canvas
-    ctx.clearRect(0, 0, width, height);
-
-    // Draw background
-    ctx.fillStyle = '#d1d5db'; // gray-300
-    ctx.roundRect(0, 0, width, height, height / 2);
-    ctx.fill();
-
-    // Draw progress
-    if (percentage > 0) {
-      const progressWidth = (width * percentage) / 100;
-      
-      // Create gradient
-      const gradient = ctx.createLinearGradient(0, 0, progressWidth, 0);
-      gradient.addColorStop(0, '#4ade80'); // green-400
-      gradient.addColorStop(1, '#3b82f6'); // blue-500
-      
-      ctx.fillStyle = gradient;
-      ctx.roundRect(0, 0, progressWidth, height, height / 2);
-      ctx.fill();
-    }
-  };
 
   useEffect(() => {
     if (!estimatedStartTime || estimatedStartTime.trim() === "") {
@@ -238,7 +205,7 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     if (totalDurationFromNow <= 0) {
       console.warn("Estimated time is in the past relative to current time.");
       setProgress(100);
-      drawProgressBar(100);
+      setShowProgressBar(true);
       return () => {};
     }
 
@@ -249,7 +216,7 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
         const now = dayjs();
         const remainingTime = end.diff(now, "second");
 
-        const percentage = Math.max(
+        const rawPercentage = Math.max(
           0,
           Math.min(
             ((totalDurationFromNow - remainingTime) / totalDurationFromNow) * 100,
@@ -257,15 +224,26 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
           )
         );
 
-        console.log("Progress (Canvas):", percentage);
+        // ANDROID FIX: Ensure minimum visible progress
+        let displayPercentage = rawPercentage;
         
-        setProgress(percentage);
+        // If progress is very small but not zero, make it at least 1%
+        if (rawPercentage > 0 && rawPercentage < 1) {
+          displayPercentage = Math.max(rawPercentage, 1);
+        }
+        
+        // Round to avoid sub-pixel rendering issues
+        displayPercentage = Math.round(displayPercentage * 100) / 100;
+
+        console.log("Raw Progress:", rawPercentage);
+        console.log("Display Progress:", displayPercentage);
+        
+        setProgress(displayPercentage);
         setUpdateCount(prev => prev + 1);
-        drawProgressBar(percentage); // Draw on canvas
         
         lastUpdateRef.current = timestamp;
 
-        if (percentage >= 100) {
+        if (rawPercentage >= 100) {
           return;
         }
       }
@@ -282,11 +260,6 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
       }
     };
   }, [estimatedStartTime]);
-
-  // Update canvas when progress changes
-  useEffect(() => {
-    drawProgressBar(progress);
-  }, [progress]);
 
   useEffect(() => {
     return () => {
@@ -309,16 +282,18 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
         </label>
       </div>
 
-      <canvas
-        ref={canvasRef}
-        width={300}
-        height={8}
-        className="w-full h-2 rounded-full shadow-inner"
-        style={{ 
-          display: 'block',
-          borderRadius: '4px'
-        }}
-      />
+      <div className="w-full h-2 bg-gray-300 rounded-full shadow-inner">
+        <div
+          className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-500 ease-linear"
+          style={{ 
+            width: `${progress}%`,
+            // Android-specific fixes
+            minWidth: progress > 0 ? '2px' : '0px', // Ensure visibility
+            transform: 'translateZ(0)', // Hardware acceleration
+            backfaceVisibility: 'hidden' // Prevent rendering glitches
+          }}
+        />
+      </div>
 
       <p className="text-sm font-bold tracking-wider uppercase text-gray-600 mt-1 text-right">
         {Math.round(progress)}% completed
@@ -326,9 +301,9 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
       
       {/* Debug info */}
       <div className="text-xs text-gray-500 mt-1 space-y-1">
-        <div>Canvas: {progress.toFixed(6)}%</div>
+        <div>Progress: {progress.toFixed(6)}%</div>
         <div>Updates: {updateCount}</div>
-        <div>Method: Canvas Rendering</div>
+        <div>Width: {progress}% = {Math.round(progress * 3)}px (assuming 300px container)</div>
       </div>
     </div>
   );
