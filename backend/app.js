@@ -812,9 +812,9 @@ const bookingEndTime = dayjs.tz(booking.end_time, IST_TIMEZONE).toDate();
                     }
                 }
 
-                finalEstimatedWaitTime = Math.abs(
-  Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330
-);
+                const diff = Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330;
+finalEstimatedWaitTime = diff === 330 ? 0 : Math.abs(diff);
+
 
 
                 // Find customer's booking if customer_id is provided
@@ -1060,9 +1060,9 @@ const bookingEndTime = dayjs.tz(booking.end_time, IST_TIMEZONE).toDate();
                     }
                 }
 
-                finalEstimatedWaitTime = Math.abs(
-  Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330
-);
+             const diff = Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330;
+ finalEstimatedWaitTime = diff === 330 ? 0 : Math.abs(diff);
+
 
 
                 // Find customer's booking if customer_id is provided
@@ -2314,9 +2314,9 @@ app.post('/getBookingsbycustomer', async (req, res) => {
 
             // Populate timeInfo based on the booking status
             if (booking.status === 'booked') {
-                const timeUntilStart = Math.abs(
-  Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330
-);
+               const diff = Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330;
+const timeUntilStart = diff === 330 ? 0 : Math.abs(diff);
+
 
                 timeInfo = {
                     time_until_service: timeUntilStart + ' minutes',
@@ -2599,9 +2599,9 @@ app.post('/getAllBookings', async (req, res) => {
             const endTime = dayjs(booking.end_time).tz(IST_TIMEZONE).toDate(); // Convert to IST
 
             if (booking.status === 'booked') {
-                const timeUntilStart = Math.abs(
-  Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330
-);
+              const diff = Math.ceil((joinTime.getTime() - currentTime.getTime()) / (1000 * 60)) - 330;
+const timeUntilStart = diff === 330 ? 0 : Math.abs(diff);
+
 
                 timeInfo = {
                     time_until_service: timeUntilStart + ' minutes',
