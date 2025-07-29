@@ -168,9 +168,11 @@ function SearchBar({ searchQuery, setSearchQuery }) {
 const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
   const [progress, setProgress] = useState(0);
   const [showProgressBar, setShowProgressBar] = useState(true);
+  const rafRef = useRef(null);
+  const isActiveRef = useRef(true);
+  const lastUpdateRef = useRef(0);
 
   useEffect(() => {
-    // --- Handle missing estimatedStartTime as before ---
     if (!estimatedStartTime || estimatedStartTime.trim() === "") {
       setShowProgressBar(false);
       setProgress(0);
@@ -179,7 +181,6 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
 
     setShowProgressBar(true);
 
-    // Parse estimated time string and normalize 'end'
     const [hourStr, minuteStrPart] = estimatedStartTime.split(":");
     const [minuteStr, meridian] = minuteStrPart.split(" ");
     let hour = parseInt(hourStr, 10);
@@ -191,64 +192,71 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
       hour = 0;
     }
 
-    // `start` is now the CURRENT time (when the component mounts or dependencies change)
-    // `end` is the estimated finish time, based on the *current date* + estimated time
-    const initialNow = dayjs(); // Capture current time when effect runs
+    const initialNow = dayjs();
     let end = initialNow.hour(hour).minute(minute).second(0).millisecond(0);
 
-    // If the estimated time is earlier than 'initialNow' on the same day,
-    // assume it's on the next day. This ensures 'end' is always in the future relative to 'initialNow'.
     if (end.isBefore(initialNow)) {
       end = end.add(1, "day");
     }
 
-    // --- NEW LOGIC FOR PROGRESS CALCULATION ---
-    // The total duration is now from 'initialNow' to 'end'
     const totalDurationFromNow = end.diff(initialNow, "second");
 
-    // Handle edge cases where the estimated time is already in the past
     if (totalDurationFromNow <= 0) {
       console.warn("Estimated time is in the past relative to current time.");
-      setProgress(100); // Set to 100% if already past
+      setProgress(100);
       setShowProgressBar(true);
-      return () => {}; // No interval needed
+      return () => {};
     }
 
-    const update = () => {
-      const now = dayjs();
-      // Remaining time from 'now' to 'end'
-      const remainingTime = end.diff(now, "second");
+    const animate = (timestamp) => {
+      if (!isActiveRef.current) return;
 
-      // Calculate progress based on how much time has passed relative to 'totalDurationFromNow'
-      // If 100 seconds total, and 10 seconds remaining, then (100 - 10) / 100 = 90%
-      const percentage = Math.max(
-        0,
-        Math.min(
-          ((totalDurationFromNow - remainingTime) / totalDurationFromNow) * 100,
-          100
-        )
-      );
+      // Throttle to update once per second
+      if (timestamp - lastUpdateRef.current >= 1000) {
+        const now = dayjs();
+        const remainingTime = end.diff(now, "second");
 
-      console.log("Now:", now.format());
-      console.log("End (estimated):", end.format());
-      console.log("Remaining Time:", remainingTime);
-      console.log("Total Duration From Now:", totalDurationFromNow);
-      console.log("Progress:", percentage);
+        const percentage = Math.max(
+          0,
+          Math.min(
+            ((totalDurationFromNow - remainingTime) / totalDurationFromNow) * 100,
+            100
+          )
+        );
 
-      setProgress(percentage);
+        console.log("Progress (RAF):", percentage);
+        setProgress(percentage);
+        lastUpdateRef.current = timestamp;
 
-      // Clear interval when progress reaches 100%
-      if (percentage >= 100) {
-        clearInterval(interval);
+        if (percentage >= 100) {
+          return; // Stop animation
+        }
       }
+
+      rafRef.current = requestAnimationFrame(animate);
     };
 
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, [estimatedStartTime]); // joinTime is no longer a direct dependency for progress calculation
+    // Start animation
+    rafRef.current = requestAnimationFrame(animate);
 
-  // Only render the progress bar if showProgressBar is true
+    return () => {
+      isActiveRef.current = false;
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, [estimatedStartTime]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isActiveRef.current = false;
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, []);
+
   if (!showProgressBar) {
     return null;
   }
