@@ -10,9 +10,23 @@ const poppins = Poppins({
 });
 
 export const metadata = {
-  title: 'TrimTadka - Trim your style. Spice your vibe.',
-  description: 'Book your next grooming appointment or manage your shop!',
+  title: 'TrimTadka - Smart Barber Queue System',
+  description: 'TrimTadka lets you book and manage salon queues online. Avoid waiting and get trimmed on your schedule.',
+  keywords: ['TrimTadka', 'Barber', 'Salon Queue', 'Haircut App', 'Online Booking'],
+  robots: 'index, follow',
+  authors: [{ name: 'Sourjya Saha' }],
+  creator: 'Sourjya Saha',
+  openGraph: {
+    title: 'TrimTadka - Smart Barber Queue System',
+    description: 'Book your next grooming appointment or manage your salon with ease.',
+    url: 'https://trim-tadka.vercel.app',
+    siteName: 'TrimTadka',
+    locale: 'en_US',
+    type: 'website',
+  },
+  metadataBase: new URL('https://trim-tadka.vercel.app'),
 };
+
 
 export default function RootLayout({ children }) {
   return (
