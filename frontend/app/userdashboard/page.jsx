@@ -169,9 +169,42 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
   const [progress, setProgress] = useState(0);
   const [showProgressBar, setShowProgressBar] = useState(true);
   const [updateCount, setUpdateCount] = useState(0);
+  const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const isActiveRef = useRef(true);
   const lastUpdateRef = useRef(0);
+
+  // Draw progress bar on canvas
+  const drawProgressBar = (percentage) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw background
+    ctx.fillStyle = '#d1d5db'; // gray-300
+    ctx.roundRect(0, 0, width, height, height / 2);
+    ctx.fill();
+
+    // Draw progress
+    if (percentage > 0) {
+      const progressWidth = (width * percentage) / 100;
+      
+      // Create gradient
+      const gradient = ctx.createLinearGradient(0, 0, progressWidth, 0);
+      gradient.addColorStop(0, '#4ade80'); // green-400
+      gradient.addColorStop(1, '#3b82f6'); // blue-500
+      
+      ctx.fillStyle = gradient;
+      ctx.roundRect(0, 0, progressWidth, height, height / 2);
+      ctx.fill();
+    }
+  };
 
   useEffect(() => {
     if (!estimatedStartTime || estimatedStartTime.trim() === "") {
@@ -205,7 +238,7 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     if (totalDurationFromNow <= 0) {
       console.warn("Estimated time is in the past relative to current time.");
       setProgress(100);
-      setShowProgressBar(true);
+      drawProgressBar(100);
       return () => {};
     }
 
@@ -224,10 +257,11 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
           )
         );
 
-        console.log("Progress (RAF):", percentage);
+        console.log("Progress (Canvas):", percentage);
         
         setProgress(percentage);
         setUpdateCount(prev => prev + 1);
+        drawProgressBar(percentage); // Draw on canvas
         
         lastUpdateRef.current = timestamp;
 
@@ -249,6 +283,11 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     };
   }, [estimatedStartTime]);
 
+  // Update canvas when progress changes
+  useEffect(() => {
+    drawProgressBar(progress);
+  }, [progress]);
+
   useEffect(() => {
     return () => {
       isActiveRef.current = false;
@@ -262,9 +301,6 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     return null;
   }
 
-  // Force recreation of progress bar every few updates for Android
-  const progressKey = Math.floor(updateCount / 3); // Recreate every 3 seconds
-
   return (
     <div className="mt-6 w-full max-w-md mx-auto">
       <div className="flex items-center justify-between mb-1">
@@ -273,19 +309,16 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
         </label>
       </div>
 
-      {/* Completely recreate the progress bar container */}
-      <div key={`progress-container-${progressKey}`} className="w-full h-2 bg-gray-300 rounded-full shadow-inner">
-        <div
-          key={`progress-bar-${updateCount}`} // Force new element every update
-          className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500"
-          style={{ 
-            width: `${progress}%`,
-            transition: 'none', // Remove all transitions
-            transform: 'translateZ(0)', // Force GPU acceleration
-            minWidth: progress > 0 ? '2px' : '0px' // Ensure visibility
-          }}
-        />
-      </div>
+      <canvas
+        ref={canvasRef}
+        width={300}
+        height={8}
+        className="w-full h-2 rounded-full shadow-inner"
+        style={{ 
+          display: 'block',
+          borderRadius: '4px'
+        }}
+      />
 
       <p className="text-sm font-bold tracking-wider uppercase text-gray-600 mt-1 text-right">
         {Math.round(progress)}% completed
@@ -293,10 +326,9 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
       
       {/* Debug info */}
       <div className="text-xs text-gray-500 mt-1 space-y-1">
-        <div>Console: {progress.toFixed(6)}%</div>
+        <div>Canvas: {progress.toFixed(6)}%</div>
         <div>Updates: {updateCount}</div>
-        <div>Key: {progressKey}</div>
-        <div>Time: {new Date().toLocaleTimeString()}</div>
+        <div>Method: Canvas Rendering</div>
       </div>
     </div>
   );
