@@ -1563,11 +1563,11 @@ setInterval(updateBookingStatuses, 60000); // Run every 60 seconds
 // Book a service - Create a new booking with automatic timing
 app.post('/bookings', async (req, res) => {
     const { shop_id, emp_id, customer_id, service_ids } = req.body;
-    
+
     // --- (UNCHANGED VALIDATION & INITIAL SETUP) ---
-    if (!shop_id || !emp_id || !customer_id || !Array.isArray(service_ids) || service_ids.length === 0) {
-        return res.status(400).json({ 
-            error: 'Missing required fields: shop_id, emp_id, customer_id, service_ids[]' 
+    if (!shop_id || !emp_id || !Array.isArray(service_ids) || service_ids.length === 0) {
+        return res.status(400).json({
+            error: 'Missing required fields: shop_id, emp_id, service_ids[] (customer_id can be 0)'
         });
     }
     if (!Number.isInteger(shop_id) || shop_id <= 0) {
@@ -1576,8 +1576,9 @@ app.post('/bookings', async (req, res) => {
     if (!Number.isInteger(emp_id) || emp_id <= 0) {
         return res.status(400).json({ error: 'emp_id must be a positive integer' });
     }
-    if (!Number.isInteger(customer_id) || customer_id <= 0) {
-        return res.status(400).json({ error: 'customer_id must be a positive integer' });
+    // MODIFIED: Allow customer_id to be 0
+    if (!Number.isInteger(customer_id) || customer_id < 0) {
+        return res.status(400).json({ error: 'customer_id must be a non-negative integer (0 allowed for no specific customer)' });
     }
     const invalidServiceIds = service_ids.filter(id => !Number.isInteger(id) || id <= 0);
     if (invalidServiceIds.length > 0) {
@@ -1587,26 +1588,45 @@ app.post('/bookings', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await updateBookingStatuses(client); // Ensure statuses are fresh
+        await updateBookingStatuses(client); // Ensure statuses are fresh [cite: 210]
 
-        const currentTime = dayjs().utc().toDate(); // Current time in UTC when the request is received
+        const currentTime = dayjs().utc().toDate(); // Current time in UTC when the request is received [cite: 211]
 
         const shopCheck = await client.query('SELECT shop_id, shop_name FROM shops WHERE shop_id = $1 AND is_active = TRUE', [shop_id]);
-        if (shopCheck.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shop not found or inactive' }); }
-        const empCheck = await client.query('SELECT emp_id, emp_name FROM employees WHERE emp_id = $1 AND shop_id = $2 AND is_active = TRUE', [emp_id, shop_id]);
-        if (empCheck.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Employee not found, inactive, or does not belong to this shop' }); }
-        const customerCheck = await client.query('SELECT customer_id, customer_name FROM customers WHERE customer_id = $1', [customer_id]);
-        if (customerCheck.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Customer not found' }); }
-
-        const existingBookingForCustomer = await client.query(`
-            SELECT booking_id FROM bookings
-            WHERE emp_id = $1 AND customer_id = $2
-            AND DATE(join_time) = DATE($3)
-            AND status IN ('booked', 'in_service')
-        `, [emp_id, customer_id, currentTime]);
-        if (existingBookingForCustomer.rowCount > 0) {
+        if (shopCheck.rowCount === 0) {
             await client.query('ROLLBACK');
-            return res.status(409).json({ error: 'Customer already has an active booking with this employee today' });
+            return res.status(404).json({ error: 'Shop not found or inactive' });
+        }
+        const empCheck = await client.query('SELECT emp_id, emp_name FROM employees WHERE emp_id = $1 AND shop_id = $2 AND is_active = TRUE', [emp_id, shop_id]);
+        if (empCheck.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Employee not found, inactive, or does not belong to this shop' });
+        }
+
+        let customerName = 'Walk-in Customer'; // Default for customer_id = 0
+        // Conditionally check for customer if customer_id is not 0
+        if (customer_id > 0) {
+            const customerCheck = await client.query('SELECT customer_id, customer_name FROM customers WHERE customer_id = $1', [customer_id]);
+            if (customerCheck.rowCount === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ error: 'Customer not found' });
+            }
+            customerName = customerCheck.rows[0].customer_name;
+        }
+
+
+        // MODIFIED: Only check for existing active bookings if customer_id is provided (not 0)
+        if (customer_id > 0) {
+            const existingBookingForCustomer = await client.query(`
+                SELECT booking_id FROM bookings
+                WHERE emp_id = $1 AND customer_id = $2
+                AND DATE(join_time) = DATE($3)
+                AND status IN ('booked', 'in_service')
+            `, [emp_id, customer_id, currentTime]);
+            if (existingBookingForCustomer.rowCount > 0) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ error: 'Customer already has an active booking with this employee today' });
+            }
         }
 
         const empServicesCheck = await client.query(`
@@ -1631,12 +1651,11 @@ app.post('/bookings', async (req, res) => {
             return res.status(400).json({ error: 'One or more service IDs are invalid' });
         }
         const totalDuration = services.reduce((sum, s) => sum + s.service_duration_minutes, 0);
-
         // --- THE CORE LOGIC FOR FINDING THE BEST SLOT ---
         let actualJoinTime;
         let foundSlot = false;
         const bookingDurationMs = totalDuration * 60000;
-        const bufferTimeMs = 5 * 60000; // 5 minutes buffer
+        const bufferTimeMs = 5 * 60000; // 5 minutes buffer [cite: 229]
 
         // 1. Get all *active* bookings for this employee, ordered by join_time
         const activeBookings = await client.query(`
@@ -1648,24 +1667,23 @@ app.post('/bookings', async (req, res) => {
 
         // 2. Determine the earliest possible start time for any new service
         // This is now + 5 minutes buffer
-        let potentialSlotStart = new Date(currentTime.getTime() + bufferTimeMs);
-
+        let potentialSlotStart = new Date(currentTime.getTime() + bufferTimeMs); // [cite: 231]
         // 3. Iterate through existing bookings to find a gap
         // If there's an 'in_service' booking, the slot can't start before its end time
         if (activeBookings.rows.length > 0 && activeBookings.rows[0].status === 'in_service') {
-            potentialSlotStart = new Date(Math.max(potentialSlotStart.getTime(), dayjs.utc(activeBookings.rows[0].end_time).toDate().getTime() + bufferTimeMs)); // Parse as UTC
+            potentialSlotStart = new Date(Math.max(potentialSlotStart.getTime(), dayjs.utc(activeBookings.rows[0].end_time).toDate().getTime() + bufferTimeMs)); // Parse as UTC [cite: 232]
         }
 
         // Now iterate through the rest of the queue to find gaps
         for (let i = 0; i < activeBookings.rows.length; i++) {
             const currentBooking = activeBookings.rows[i];
-            const currentBookingStartTime = dayjs.utc(currentBooking.join_time).toDate(); // Parse as UTC
-            const currentBookingEndTime = dayjs.utc(currentBooking.end_time).toDate();   // Parse as UTC
+            const currentBookingStartTime = dayjs.utc(currentBooking.join_time).toDate(); // Parse as UTC [cite: 233]
+            const currentBookingEndTime = dayjs.utc(currentBooking.end_time).toDate(); // Parse as UTC [cite: 234]
 
             // Check the gap *before* the current booking
             // The gap must be large enough to accommodate the new booking + buffer
             if (potentialSlotStart.getTime() + bookingDurationMs <= currentBookingStartTime.getTime()) {
-                // Found a slot!
+                // Found a slot! [cite: 235]
                 actualJoinTime = potentialSlotStart;
                 foundSlot = true;
                 break;
@@ -1673,30 +1691,28 @@ app.post('/bookings', async (req, res) => {
 
             // Move potentialSlotStart to after the current booking
             // This sets up the check for the gap *after* the current booking
-            potentialSlotStart = new Date(currentBookingEndTime.getTime() + bufferTimeMs);
+            potentialSlotStart = new Date(currentBookingEndTime.getTime() + bufferTimeMs); // [cite: 236]
         }
 
         // If no slot was found in between, place it at the very end of the queue
         if (!foundSlot) {
-            actualJoinTime = potentialSlotStart; // This would be after the last booking + buffer
+            actualJoinTime = potentialSlotStart; // This would be after the last booking + buffer [cite: 237]
         }
         // --- END OF CORE LOGIC ---
 
-        const endTime = new Date(actualJoinTime.getTime() + bookingDurationMs);
-
+        const endTime = new Date(actualJoinTime.getTime() + bookingDurationMs); // [cite: 238]
         const service_type = services.map(s => ({
             id: s.service_id,
             name: s.service_name,
             duration_minutes: s.service_duration_minutes
         }));
-
         let initialStatus = 'booked';
         if (actualJoinTime <= currentTime) {
-            initialStatus = 'in_service';
+            initialStatus = 'in_service'; // [cite: 240]
         }
 
         // Convert actualJoinTime and endTime to UTC Date objects for insertion
-        const actualJoinTimeUTC = dayjs(actualJoinTime).utc().toDate();
+        const actualJoinTimeUTC = dayjs(actualJoinTime).utc().toDate(); // [cite: 241]
         const endTimeUTC = dayjs(endTime).utc().toDate();
 
         const insertQuery = `
@@ -1714,36 +1730,35 @@ app.post('/bookings', async (req, res) => {
             JSON.stringify(service_type),
             actualJoinTimeUTC, // Use UTC Date object for insertion
             totalDuration,
-            endTimeUTC,       // Use UTC Date object for insertion
+            endTimeUTC,        // Use UTC Date object for insertion
             initialStatus
         ];
-
         const { rows } = await client.query(insertQuery, values);
         const newBooking = rows[0];
-        
-        await client.query('COMMIT');
 
+        await client.query('COMMIT');
         const queuePosition = await client.query(`
             SELECT COUNT(*) + 1 as position
             FROM bookings
             WHERE emp_id = $1
             AND status = 'booked'
             AND join_time < $2
-        `, [emp_id, actualJoinTimeUTC]); // Use UTC time for comparison
+        `, [emp_id, actualJoinTimeUTC]); // Use UTC time for comparison [cite: 247]
 
-        // Notify Customer
-        await sendNotificationToCustomer(customer_id, {
-            title: 'Booking Confirmed!',
-            body: `Your booking (ID: ${newBooking.booking_id}) at ${shopCheck.rows[0].shop_name} with ${empCheck.rows[0].emp_name} is confirmed for ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
-            url: `/dashboard?bookingId=${newBooking.booking_id}`,
-            bookingId: newBooking.booking_id,
-            type: 'new_booking_customer',
-        });
-
-        // Notify Shop
+        // MODIFIED: Conditionally send notification to customer
+        if (customer_id > 0) {
+            await sendNotificationToCustomer(customer_id, {
+                title: 'Booking Confirmed!',
+                body: `Your booking (ID: ${newBooking.booking_id}) at ${shopCheck.rows[0].shop_name} with ${empCheck.rows[0].emp_name} is confirmed for ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST 
+                url: `/dashboard?bookingId=${newBooking.booking_id}`,
+                bookingId: newBooking.booking_id,
+                type: 'new_booking_customer',
+            });
+        }
+        // Notify Shop [cite: 249]
         await sendNotificationToShop(shop_id, {
             title: 'New Booking Received!',
-            body: `A new booking (ID: ${newBooking.booking_id}) has been made with ${empCheck.rows[0].emp_name} for ${customerCheck.rows[0].customer_name} at ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
+            body: `A new booking (ID: ${newBooking.booking_id}) has been made with ${empCheck.rows[0].emp_name} for ${customerName} at ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST 
             url: `/shop/dashboard?bookingId=${newBooking.booking_id}`,
             bookingId: newBooking.booking_id,
             type: 'new_booking_shop',
@@ -1756,33 +1771,32 @@ app.post('/bookings', async (req, res) => {
                 ...newBooking,
                 shop_name: shopCheck.rows[0].shop_name,
                 emp_name: empCheck.rows[0].emp_name,
-                customer_name: customerCheck.rows[0].customer_name,
+                customer_name: customerName, // Use the determined customer name 
                 services: services,
                 total_duration_minutes: totalDuration,
                 queue_position: initialStatus === 'booked' ? queuePosition.rows[0].position : null,
                 formatted_times: {
-                    join_time: dayjs(actualJoinTime).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'), // Formatted in IST
+                    join_time: dayjs(actualJoinTime).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'), // Formatted in IST [cite: 252]
                     end_time: dayjs(endTime).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'),     // Formatted in IST
                     join_time_display: dayjs(actualJoinTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'), // Formatted in IST
                     end_time_display: dayjs(endTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A')     // Formatted in IST
                 },
                 estimated_wait_time: initialStatus === 'booked' ?
-                    Math.max(0, Math.ceil((actualJoinTime.getTime() - currentTime.getTime()) / (1000 * 60))) + ' minutes' :
+                    Math.max(0, Math.ceil((actualJoinTime.getTime() - currentTime.getTime()) / (1000 * 60))) + ' minutes' : // [cite: 254]
                     'Service starting now',
                 automatic_status_info: {
-                    will_start_at: dayjs(actualJoinTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'), // Formatted in IST
+                    will_start_at: dayjs(actualJoinTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'), // Formatted in IST [cite: 255]
                     will_complete_at: dayjs(endTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'),     // Formatted in IST
                     status_changes: {
-                        to_in_service: actualJoinTime <= currentTime ? 'Already started' : 'When join_time is reached',
+                        to_in_service: actualJoinTime <= currentTime ? 'Already started' : 'When join_time is reached', // [cite: 256]
                         to_completed: 'Automatically when service ends'
                     }
                 }
             }
         });
-
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error('Booking error:', err.message);
+        console.error('Booking error:', err.message); // [cite: 258]
         res.status(500).json({
             error: 'Failed to create booking',
             details: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -1791,7 +1805,6 @@ app.post('/bookings', async (req, res) => {
         client.release();
     }
 });
-
 // Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' is imported
 
 // Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' is imported
