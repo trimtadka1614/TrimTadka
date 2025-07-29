@@ -168,10 +168,10 @@ function SearchBar({ searchQuery, setSearchQuery }) {
 const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
   const [progress, setProgress] = useState(0);
   const [showProgressBar, setShowProgressBar] = useState(true);
+  const [forceUpdate, setForceUpdate] = useState(0); // Force re-render counter
   const rafRef = useRef(null);
   const isActiveRef = useRef(true);
   const lastUpdateRef = useRef(0);
-  const progressBarRef = useRef(null); // Add ref for direct DOM manipulation
 
   useEffect(() => {
     if (!estimatedStartTime || estimatedStartTime.trim() === "") {
@@ -212,7 +212,6 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     const animate = (timestamp) => {
       if (!isActiveRef.current) return;
 
-      // Throttle to update once per second
       if (timestamp - lastUpdateRef.current >= 1000) {
         const now = dayjs();
         const remainingTime = end.diff(now, "second");
@@ -227,29 +226,20 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
 
         console.log("Progress (RAF):", percentage);
         
-        // Update React state
+        // Update both progress and force re-render
         setProgress(percentage);
-        
-        // FORCE DOM update for Android compatibility
-        if (progressBarRef.current) {
-          progressBarRef.current.style.width = `${percentage}%`;
-          // Force repaint on Android
-          progressBarRef.current.style.transform = `translateZ(0)`;
-          // Trigger reflow
-          progressBarRef.current.offsetHeight;
-        }
+        setForceUpdate(prev => prev + 1); // Force component re-render
         
         lastUpdateRef.current = timestamp;
 
         if (percentage >= 100) {
-          return; // Stop animation
+          return;
         }
       }
 
       rafRef.current = requestAnimationFrame(animate);
     };
 
-    // Start animation
     rafRef.current = requestAnimationFrame(animate);
 
     return () => {
@@ -260,7 +250,6 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     };
   }, [estimatedStartTime]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       isActiveRef.current = false;
@@ -274,8 +263,11 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     return null;
   }
 
+  // Create a unique key to force DOM re-creation on Android
+  const uniqueKey = `progress-${Math.floor(forceUpdate / 5)}`; // Update key every 5 updates
+
   return (
-    <div className="mt-6 w-full max-w-md mx-auto">
+    <div className="mt-6 w-full max-w-md mx-auto" key={uniqueKey}>
       <div className="flex items-center justify-between mb-1">
         <label className="text-sm tracking-wider uppercase font-semibold text-gray-700">
           Time Until Service Starts
@@ -284,16 +276,19 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
 
       <div className="w-full h-2 bg-gray-300 rounded-full shadow-inner">
         <div
-          ref={progressBarRef}
           className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500"
           style={{ 
             width: `${progress}%`,
-            // Remove CSS transitions that might not work on Android
+            // Remove all transitions for Android
             transition: 'none',
+            WebkitTransition: 'none',
+            MozTransition: 'none',
             // Force hardware acceleration
             transform: 'translateZ(0)',
-            // Ensure proper rendering
-            willChange: 'width'
+            WebkitTransform: 'translateZ(0)',
+            // Additional Android fixes
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden'
           }}
         />
       </div>
@@ -302,14 +297,15 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
         {Math.round(progress)}% completed
       </p>
       
-      {/* Debug display to verify the value is updating */}
-      <div className="text-xs text-gray-500 mt-1">
-        Debug: {progress.toFixed(6)}%
+      {/* Debug info */}
+      <div className="text-xs text-gray-500 mt-1 space-y-1">
+        <div>Progress: {progress.toFixed(6)}%</div>
+        <div>Updates: {forceUpdate}</div>
+        <div>Time: {new Date().toLocaleTimeString()}</div>
       </div>
     </div>
   );
 };
-
 // === BookingModal Component ===
 function BookingModal({
   shopId,
