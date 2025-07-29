@@ -168,7 +168,7 @@ function SearchBar({ searchQuery, setSearchQuery }) {
 const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
   const [progress, setProgress] = useState(0);
   const [showProgressBar, setShowProgressBar] = useState(true);
-  const [forceUpdate, setForceUpdate] = useState(0); // Force re-render counter
+  const [updateCount, setUpdateCount] = useState(0);
   const rafRef = useRef(null);
   const isActiveRef = useRef(true);
   const lastUpdateRef = useRef(0);
@@ -226,9 +226,8 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
 
         console.log("Progress (RAF):", percentage);
         
-        // Update both progress and force re-render
         setProgress(percentage);
-        setForceUpdate(prev => prev + 1); // Force component re-render
+        setUpdateCount(prev => prev + 1);
         
         lastUpdateRef.current = timestamp;
 
@@ -263,32 +262,27 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
     return null;
   }
 
-  // Create a unique key to force DOM re-creation on Android
-  const uniqueKey = `progress-${Math.floor(forceUpdate / 5)}`; // Update key every 5 updates
+  // Force recreation of progress bar every few updates for Android
+  const progressKey = Math.floor(updateCount / 3); // Recreate every 3 seconds
 
   return (
-    <div className="mt-6 w-full max-w-md mx-auto" key={uniqueKey}>
+    <div className="mt-6 w-full max-w-md mx-auto">
       <div className="flex items-center justify-between mb-1">
         <label className="text-sm tracking-wider uppercase font-semibold text-gray-700">
           Time Until Service Starts
         </label>
       </div>
 
-      <div className="w-full h-2 bg-gray-300 rounded-full shadow-inner">
+      {/* Completely recreate the progress bar container */}
+      <div key={`progress-container-${progressKey}`} className="w-full h-2 bg-gray-300 rounded-full shadow-inner">
         <div
+          key={`progress-bar-${updateCount}`} // Force new element every update
           className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500"
           style={{ 
             width: `${progress}%`,
-            // Remove all transitions for Android
-            transition: 'none',
-            WebkitTransition: 'none',
-            MozTransition: 'none',
-            // Force hardware acceleration
-            transform: 'translateZ(0)',
-            WebkitTransform: 'translateZ(0)',
-            // Additional Android fixes
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden'
+            transition: 'none', // Remove all transitions
+            transform: 'translateZ(0)', // Force GPU acceleration
+            minWidth: progress > 0 ? '2px' : '0px' // Ensure visibility
           }}
         />
       </div>
@@ -299,8 +293,9 @@ const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
       
       {/* Debug info */}
       <div className="text-xs text-gray-500 mt-1 space-y-1">
-        <div>Progress: {progress.toFixed(6)}%</div>
-        <div>Updates: {forceUpdate}</div>
+        <div>Console: {progress.toFixed(6)}%</div>
+        <div>Updates: {updateCount}</div>
+        <div>Key: {progressKey}</div>
         <div>Time: {new Date().toLocaleTimeString()}</div>
       </div>
     </div>
