@@ -17,7 +17,7 @@ import {
 import Image from 'next/image';
 
 // Define API_BASE_URL, ensure it's correctly configured in your environment
-const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
+const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
 export default function LoginPage() {
   const [isCustomer, setIsCustomer] = useState(true);
