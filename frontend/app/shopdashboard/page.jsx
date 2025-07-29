@@ -35,7 +35,7 @@ import { LogOut, Scissors,
     CheckCircle2Icon,
     LoaderIcon } from "lucide-react";
 
-const API_BASE_URL = 'https://trim-tadka-backend.vercel.app';
+const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 import Image from 'next/image';
 
 import RegisterStylistModal from './RegisterStylistModal';
