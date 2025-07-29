@@ -77,10 +77,7 @@ pool.connect(async (err, client, release) => { // Made async to use await
         return console.error('Error acquiring client:', err.stack);
     }
     try {
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // This was removed as timezone is handled by dayjs
         console.log('Successfully connected to the database!');
-    } catch (tzErr) {
-        console.error('Error during initial connection:', tzErr); // Changed message as timezone setting is removed
     } finally {
         release(); // Release the client back to the pool
     }
@@ -627,7 +624,6 @@ app.get('/myshop/:shop_id', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         const result = await client.query(
             'SELECT shop_id, shop_name, lat, long, address, ph_number, is_active FROM shops WHERE shop_id = $1',
@@ -665,7 +661,6 @@ app.get('/shops', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         const result = await client.query(
             'SELECT shop_id, shop_name, lat, long, address, ph_number FROM shops WHERE is_active = true ORDER BY shop_name'
@@ -698,7 +693,6 @@ app.get('/shops/simple', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         // Base query to get shops with barbers and their services
         // Modified to include is_active status for both shops and employees
@@ -932,7 +926,6 @@ app.post('/shop_status', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         // Validate shop_id as it's now a primary filter for this route
         if (!shop_id || !Number.isInteger(parseInt(shop_id))) {
@@ -1193,7 +1186,6 @@ app.post('/register_service', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         const result = await client.query(
             `INSERT INTO services (service_name, service_duration_minutes)
@@ -1225,7 +1217,6 @@ app.get('/services', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         const result = await client.query(
             'SELECT * FROM services ORDER BY service_name'
@@ -1296,7 +1287,6 @@ app.post('/register_employee', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
         
         // Check shop existence and if it's active
         const shop = await client.query(
@@ -1415,7 +1405,6 @@ app.get('/shops/:shop_id/employees', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         const result = await client.query(`
             SELECT
@@ -1451,14 +1440,11 @@ app.get('/shops/:shop_id/employees', async (req, res) => {
 });
 
 // Utility function to update booking statuses based on current time
-// This is a conceptual example of your updateBookingStatuses function.
-// You need to integrate this logic into your actual function's implementation.
 async function updateBookingStatuses() {
     console.log('Running updateBookingStatuses to check for changes and send notifications...');
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         await client.query('BEGIN'); // Start transaction
 
@@ -1626,7 +1612,6 @@ app.post('/bookings', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         await updateBookingStatuses(client); // Ensure statuses are fresh
 
@@ -1752,9 +1737,11 @@ app.post('/bookings', async (req, res) => {
             emp_id,
             customer_id,
             JSON.stringify(service_type),
-            actualJoinTime, // This Date object represents IST time and will be stored as such
+            // IMPORTANT: Format to IST string before sending to DB for 'timestamp without time zone'
+            dayjs(actualJoinTime).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss'), 
             totalDuration,
-            endTime, // This Date object represents IST time and will be stored as such
+            // IMPORTANT: Format to IST string before sending to DB for 'timestamp without time zone'
+            dayjs(endTime).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss'), 
             initialStatus
         ];
 
@@ -1850,7 +1837,6 @@ app.post('/bookings/cancel', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         // 2. Verify Ownership and Status
         // FOR UPDATE locks the row to prevent race conditions during cancellation
@@ -1951,7 +1937,6 @@ app.post('/shop/bookings/cancel', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         // 2. Verify Shop Ownership of the Barber and Booking Status
         const bookingCheck = await client.query(
@@ -2044,7 +2029,6 @@ app.post('/shop/bookings/cancel', async (req, res) => {
 // as provided in the previous turn.
 
 async function updateSubsequentBookings(client, empId, cancelledBookingOriginalEndTime, cancelledServiceDurationMinutes, shopId) {
-    // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
     const subsequentBookingsQuery = `
         SELECT booking_id, customer_id, join_time, end_time, service_duration_minutes, status
@@ -2106,7 +2090,10 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
                 `UPDATE bookings
                  SET join_time = $1, end_time = $2
                  WHERE booking_id = $3`,
-                [newJoinTime, newEndTime, booking.booking_id] // Store IST Date objects
+                // IMPORTANT: Format to IST string before sending to DB for 'timestamp without time zone'
+                [dayjs(newJoinTime).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss'), 
+                 dayjs(newEndTime).tz(IST_TIMEZONE).format('YYYY-MM-DD HH:mm:ss'), 
+                 booking.booking_id] 
             );
             console.log(`Updated booking ${booking.booking_id}: Old join_time: ${dayjs(originalJoinTime).tz(IST_TIMEZONE).format('HH:mm')}, New join_time ${dayjs(newJoinTime).tz(IST_TIMEZONE).format('HH:mm')}`); // Log in IST
 
@@ -2191,7 +2178,6 @@ app.post('/getBookingsbycustomer', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         // Define currentTime at the beginning of the route handler for consistent time calculations
         const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
@@ -2465,7 +2451,6 @@ app.post('/getAllBookings', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         // Define currentTime at the beginning of the route handler
         const currentTime = dayjs().tz(IST_TIMEZONE).toDate(); // Use IST current time
@@ -2737,7 +2722,6 @@ app.put('/shops/:shop_id/status', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         // Update the 'is_active' status for the specified shop_id
         const result = await client.query(
@@ -2784,7 +2768,6 @@ app.put('/employees/:emp_id/status', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        // Removed: await client.query("SET TIME ZONE 'Asia/Kolkata'"); // Timezone handling is done by dayjs
 
         const result = await client.query(
             `UPDATE employees SET is_active = $1 WHERE emp_id = $2 RETURNING *`,
