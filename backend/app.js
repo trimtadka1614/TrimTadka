@@ -2754,6 +2754,10 @@ app.put('/employees/:emp_id/status', async (req, res) => {
     }
 });
 
+
+app.get('/', (req, res) => {
+    res.send('Backend for Trimtadka successfully running in Vercel');
+});
 // Start the server
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
