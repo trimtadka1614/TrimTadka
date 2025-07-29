@@ -4,28 +4,20 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const haversine = require("haversine-distance");
 const dayjs = require('dayjs'); // For easy time manipulation
-const utc = require('dayjs/plugin/utc'); // Import UTC plugin
-const timezone = require('dayjs/plugin/timezone'); // Import Timezone plugin
 require('dotenv').config(); // Load environment variables from .env file
-
-// Extend dayjs with UTC and Timezone plugins
-dayjs.extend(utc);
-dayjs.extend(timezone);
-
-// Set default timezone for dayjs to IST (Indian Standard Time)
-// This ensures that any dayjs operations on the server side reflect IST
-// Database operations using CURRENT_TIMESTAMP will still store in UTC,
-// and dayjs will convert them to IST for display/calculation when needed.
-dayjs.tz.setDefault("Asia/Kolkata"); // IST timezone
+const webpush = require('web-push'); // Added for push notifications
 
 // Initialize Express app
 const app = express();
-// Vercel handles the port automatically, so we don't need process.env.PORT here
-// const port = process.env.PORT || 3000;
+// Vercel automatically assigns a port, so we don't need to explicitly listen on one.
+// The PORT environment variable is set by Vercel.
+const port = process.env.PORT || 3000; 
 
-// CORS middleware to allow requests from Hoppscotch web
+// CORS middleware to allow requests from Hoppscotch web and Vercel frontend
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    // Allow requests from any origin for now. In production, you might want to restrict this
+    // to your specific frontend domain (e.g., 'https://your-frontend-domain.vercel.app').
+    res.header('Access-Control-Allow-Origin', '*'); 
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     
@@ -44,8 +36,8 @@ app.use(express.json());
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     // Explicitly set SSL options for Vercel deployment.
-    // `rejectUnauthorized: false` is often needed for connections to databases
-    // with self-signed certificates or certain cloud providers.
+    // `rejectUnauthorized: false` is often needed when connecting to external databases
+    // like Supabase from Vercel, as Vercel's environment might not trust the CA.
     ssl: {
         rejectUnauthorized: false 
     }
@@ -70,7 +62,7 @@ pool.connect((err, client, release) => {
             console.error('Database connection failed: ETIMEDOUT or ENOTFOUND. This usually means:');
             console.error('1. Your DATABASE_URL in .env might be incorrect or have typos.');
             console.error('2. Your network/firewall might be blocking the connection to your database.');
-            console.error('3. Your database IP allowlisting might be enabled, and your IP/Vercel IP is not whitelisted.');
+            console.error('3. Your database IP allowlisting might be enabled, and Vercel\'s IP is not whitelisted.');
             console.error('Please check your .env file and database project settings.');
             console.error('Expected format: postgresql://user:password@host:port/database');
         }
@@ -85,7 +77,9 @@ pool.connect((err, client, release) => {
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
     console.error('JWT_SECRET is not defined in environment variables. Please set it.');
-    process.exit(1); // Exit if secret is not set
+    // In a serverless environment like Vercel, process.exit(1) might not be ideal
+    // for every error, but for a critical missing env var, it's acceptable.
+    process.exit(1); 
 }
 
 // Middleware to verify JWT token (for protected routes)
@@ -106,38 +100,26 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-// Utility function to calculate estimated wait time
+// Utility function to calculate estimated wait time (this function is not directly used in the provided code, but kept for context)
 function calculateWaitTime(queue, durations) {
     return queue.reduce((sum, booking) => {
         return sum + (booking.service_duration_minutes || 0);
     }, 0);
 }
 
-// Health check route
-app.get('/health', (req, res) => {
-    res.status(200).json({ 
-        message: 'Server is running!', 
-        timestamp: dayjs().toISOString(), // Use dayjs for consistent timestamp
-        // port: port // Port is not relevant for Vercel deployment
-    });
-});
-
-const webpush = require('web-push');
-
 // VAPID keys for push notifications
-// VAPID Keys for Web Push Notifications
 // IMPORTANT: Replace with your actual VAPID keys from environment variables
 const vapidKeys = {
     publicKey: process.env.VAPID_PUBLIC_KEY,
     privateKey: process.env.VAPID_PRIVATE_KEY,
 };
 
+// Set VAPID details for webpush. Ensure 'mailto:' is included.
 webpush.setVapidDetails(
-    'mailto:sourjya1614@gmail.com', // CORRECTED: Changed to a mailto: URL
+    'mailto:sourjya1614@gmail.com', // Replace with your actual email or a mailto: URL
     vapidKeys.publicKey,
     vapidKeys.privateKey
 );
-
 
 // Utility function to send push notifications to customers
 async function sendNotificationToCustomer(customerId, payload) {
@@ -212,7 +194,6 @@ async function sendNotificationToShop(shopId, payload) {
         console.error(`Database error while fetching subscription for shop ${shopId}:`, dbError);
     }
 }
-
 
 // Customer Push Notification Routes
 app.post('/subscribe', async (req, res) => {
@@ -352,7 +333,7 @@ app.post('/shop/unsubscribe', async (req, res) => {
         }
 
         console.log(`Unsubscribed shop ${shopId}.`);
-        res.status(200).json({ message: 'Unsubscribed successfully.' });
+        res.status(200).json({ message: 'Shop unsubscribed successfully.' });
     } catch (error) {
         console.error('Error handling shop unsubscription:', error);
         res.status(500).json({ error: 'Failed to handle shop unsubscription.' });
@@ -580,7 +561,6 @@ app.post('/signin_shop', async (req, res) => {
         const isPasswordValid = await bcrypt.compare(password, shop.password);
 
         if (!isPasswordValid) {
-            // If passwords do not match, return an unauthorized error
             return res.status(401).json({ message: 'Invalid phone number or password.' });
         }
 
@@ -617,7 +597,7 @@ app.get('/profile', authenticateToken, (req, res) => {
     res.json({
         message: 'This is a protected route',
         user: req.user,
-        timestamp: dayjs().toISOString() // Use dayjs for consistent timestamp
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -730,8 +710,7 @@ app.get('/shops/simple', async (req, res) => {
         const shopsResult = await pool.query(shopsQuery);
         
         // Get current and future bookings for queue calculation for all shops
-        const currentTime = dayjs().tz("Asia/Kolkata"); // Use dayjs for current time, keep as dayjs object
-        console.log("Current time in /shops/simple:", currentTime.format('YYYY-MM-DD HH:mm:ss [IST]')); // For debugging
+        const currentTime = new Date();
         const bookingsQuery = `
             SELECT 
                 b.booking_id,
@@ -751,7 +730,7 @@ app.get('/shops/simple', async (req, res) => {
             ORDER BY b.join_time ASC
         `;
         
-        const bookingsResult = await pool.query(bookingsQuery, [currentTime.toDate()]); // Pass Date object to DB
+        const bookingsResult = await pool.query(bookingsQuery, [currentTime]);
         const bookings = bookingsResult.rows;
 
         // Group shops data
@@ -787,28 +766,28 @@ app.get('/shops/simple', async (req, res) => {
                 
                 // Calculate estimated wait time
                 let finalEstimatedWaitTime = 0;
-                let lastBookingEndTime = currentTime.toDate(); // Start with current time as the reference point for calculating next available slot
+                let lastBookingEndTime = currentTime; // Start with current time as the reference point for calculating next available slot
 
                 // Sort all active bookings by join_time to process them sequentially
                 const sortedActiveBookings = empBookings
-                    .sort((a, b) => dayjs(a.join_time).toDate().getTime() - dayjs(b.join_time).toDate().getTime());
+                    .sort((a, b) => new Date(a.join_time).getTime() - new Date(b.join_time).getTime());
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = dayjs(booking.join_time).toDate();
-                    const bookingEndTime = dayjs(booking.end_time).toDate();
+                    const bookingJoinTime = new Date(booking.join_time);
+                    const bookingEndTime = new Date(booking.end_time);
 
                     if (booking.status === 'in_service') {
-                        lastBookingEndTime = dayjs(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)).toDate(); // Add 5 min buffer
+                        lastBookingEndTime = new Date(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)); // Add 5 min buffer
                     } else if (booking.status === 'booked') {
-                        const potentialStartTimeAfterPrevious = dayjs(lastBookingEndTime.getTime()).toDate(); 
-                        const actualStartTimeForThisBooking = dayjs(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime())).toDate();
+                        const potentialStartTimeAfterPrevious = new Date(lastBookingEndTime.getTime()); 
+                        const actualStartTimeForThisBooking = new Date(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime()));
                         
-                        lastBookingEndTime = dayjs(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000).toDate(); // Add 5 min buffer
+                        lastBookingEndTime = new Date(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000); // Add 5 min buffer
                     }
                 }
 
-                finalEstimatedWaitTime = Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.toDate().getTime()) / (1000 * 60)));
+                finalEstimatedWaitTime = Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)));
 
                 // Find customer's booking if customer_id is provided
                 let customerBooking = null;
@@ -844,8 +823,8 @@ app.get('/shops/simple', async (req, res) => {
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    const joinTime = dayjs(customerBooking.join_time).toDate();
-                    const endTime = dayjs(customerBooking.end_time).toDate();
+                    const joinTime = new Date(customerBooking.join_time);
+                    const endTime = new Date(customerBooking.end_time);
                     
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
@@ -895,7 +874,7 @@ app.get('/shops/simple', async (req, res) => {
             shops: shops,
             total_shops: shops.length,
             user_location_provided: !!(lat && long),
-            timestamp: dayjs().toISOString() // Use dayjs for consistent timestamp
+            timestamp: new Date().toISOString()
         });
 
     } catch (error) {
@@ -908,8 +887,6 @@ app.get('/shops/simple', async (req, res) => {
 });
 
 
-
-// Get shops with detailed barber info & queue status (renamed to /shop_status and changed to POST)
 // Get shops with detailed barber info & queue status (renamed to /shop_status and changed to POST)
 // Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' and 'haversine' are imported if used.
 // Example imports if not already present:
@@ -971,8 +948,7 @@ app.post('/shop_status', async (req, res) => {
         }
         
         // Get current and future bookings for queue calculation for the specific shop
-        const currentTime = dayjs().tz("Asia/Kolkata"); // Use dayjs for current time, keep as dayjs object
-        console.log("Current time in /shop_status:", currentTime.format('YYYY-MM-DD HH:mm:ss [IST]')); // For debugging
+        const currentTime = new Date();
         const bookingsQuery = `
             SELECT 
                 b.booking_id,
@@ -993,7 +969,7 @@ app.post('/shop_status', async (req, res) => {
             ORDER BY b.join_time ASC
         `;
         
-        const bookingsResult = await pool.query(bookingsQuery, [parsedShopId, currentTime.toDate()]); // Pass shop_id and currentTime
+        const bookingsResult = await pool.query(bookingsQuery, [parsedShopId, currentTime]); // Pass shop_id and currentTime
         const bookings = bookingsResult.rows;
 
         // Group shops data (will only be one shop due to shop_id filter)
@@ -1029,28 +1005,28 @@ app.post('/shop_status', async (req, res) => {
                 
                 // Calculate estimated wait time
                 let finalEstimatedWaitTime = 0;
-                let lastBookingEndTime = currentTime.toDate(); // Start with current time as the reference point for calculating next available slot
+                let lastBookingEndTime = currentTime; // Start with current time as the reference point for calculating next available slot
 
                 // Sort all active bookings by join_time to process them sequentially
                 const sortedActiveBookings = empBookings
-                    .sort((a, b) => dayjs(a.join_time).toDate().getTime() - dayjs(b.join_time).toDate().getTime());
+                    .sort((a, b) => new Date(a.join_time).getTime() - new Date(b.join_time).getTime());
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = dayjs(booking.join_time).toDate();
-                    const bookingEndTime = dayjs(booking.end_time).toDate();
+                    const bookingJoinTime = new Date(booking.join_time);
+                    const bookingEndTime = new Date(booking.end_time);
 
                     if (booking.status === 'in_service') {
-                        lastBookingEndTime = dayjs(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)).toDate(); // Add 5 min buffer
+                        lastBookingEndTime = new Date(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)); // Add 5 min buffer
                     } else if (booking.status === 'booked') {
-                        const potentialStartTimeAfterPrevious = dayjs(lastBookingEndTime.getTime()).toDate(); 
-                        const actualStartTimeForThisBooking = dayjs(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime())).toDate();
+                        const potentialStartTimeAfterPrevious = new Date(lastBookingEndTime.getTime()); 
+                        const actualStartTimeForThisBooking = new Date(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime()));
                         
-                        lastBookingEndTime = dayjs(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000).toDate(); // Add 5 min buffer
+                        lastBookingEndTime = new Date(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000); // Add 5 min buffer
                     }
                 }
 
-                finalEstimatedWaitTime = Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.toDate().getTime()) / (1000 * 60)));
+                finalEstimatedWaitTime = Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)));
 
                 // Find customer's booking if customer_id is provided
                 let customerBooking = null;
@@ -1086,8 +1062,8 @@ app.post('/shop_status', async (req, res) => {
 
                 // Add customer's booking info if exists
                 if (customerBooking) {
-                    const joinTime = dayjs(customerBooking.join_time).toDate();
-                    const endTime = dayjs(customerBooking.end_time).toDate();
+                    const joinTime = new Date(customerBooking.join_time);
+                    const endTime = new Date(customerBooking.end_time);
                     
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
@@ -1137,7 +1113,7 @@ app.post('/shop_status', async (req, res) => {
             shops: shops,
             total_shops: shops.length,
             user_location_provided: !!(lat && long),
-            timestamp: dayjs().toISOString() // Use dayjs for consistent timestamp
+            timestamp: new Date().toISOString()
         });
 
     } catch (error) {
@@ -1415,8 +1391,6 @@ app.get('/shops/:shop_id/employees', async (req, res) => {
     }
 });
 
-// Book a service - Create a new booking
-
 // Utility function to update booking statuses based on current time
 // This is a conceptual example of your updateBookingStatuses function.
 // You need to integrate this logic into your actual function's implementation.
@@ -1427,8 +1401,7 @@ async function updateBookingStatuses() {
         client = await pool.connect();
         await client.query('BEGIN'); // Start transaction
 
-        const currentTime = dayjs().tz("Asia/Kolkata"); // Use dayjs for current time, keep as dayjs object
-        console.log("Current time in updateBookingStatuses:", currentTime.format('YYYY-MM-DD HH:mm:ss [IST]')); // For debugging
+        const currentTime = new Date();
 
         // 1. Update 'booked' to 'in_service'
         const inServiceResult = await client.query(
@@ -1436,7 +1409,7 @@ async function updateBookingStatuses() {
              SET status = 'in_service'
              WHERE status = 'booked' AND join_time <= $1
              RETURNING booking_id, customer_id, shop_id, emp_id;`, // Added emp_id and shop_id
-            [currentTime.toDate()]
+            [currentTime]
         );
 
         for (const row of inServiceResult.rows) {
@@ -1473,7 +1446,7 @@ async function updateBookingStatuses() {
              SET status = 'completed'
              WHERE status = 'in_service' AND end_time <= $1
              RETURNING booking_id, customer_id, shop_id, emp_id;`, // Added emp_id and shop_id
-            [currentTime.toDate()]
+            [currentTime]
         );
 
         for (const row of completedResult.rows) {
@@ -1510,7 +1483,7 @@ async function updateBookingStatuses() {
              SET status = 'cancelled'
              WHERE status = 'booked' AND join_time <= $1 AND customer_id IS NOT NULL
              RETURNING booking_id, customer_id, shop_id, emp_id;`, // Added emp_id and shop_id
-            [currentTime.toDate()]
+            [currentTime]
         );
 
         for (const row of missedResult.rows) {
@@ -1559,14 +1532,12 @@ async function updateBookingStatuses() {
 
 
 // Schedule automatic status updates every minute
-// For Vercel, background jobs like setInterval are not guaranteed to run continuously.
-// You might need a dedicated cron job service (e.g., Vercel Cron Jobs, external cron)
-// to trigger '/update-statuses' endpoint periodically for reliable updates.
-// Keeping it for local development/testing.
+// In a serverless environment like Vercel, `setInterval` might not behave as expected
+// because functions are stateless and spin up/down. For background tasks,
+// you'd typically use Vercel Cron Jobs or a dedicated task runner.
+// For now, we'll keep it for local testing, but be aware of its limitations on Vercel.
 setInterval(updateBookingStatuses, 60000); // Run every 60 seconds
 
-// Book a service - Create a new booking with automatic timing
-// Book a service - Create a new booking with automatic timing
 // Book a service - Create a new booking with automatic timing
 app.post('/bookings', async (req, res) => {
     const { shop_id, emp_id, customer_id, service_ids } = req.body;
@@ -1596,8 +1567,7 @@ app.post('/bookings', async (req, res) => {
         await client.query('BEGIN');
         await updateBookingStatuses(client); // Ensure statuses are fresh
 
-        const currentTime = dayjs().tz("Asia/Kolkata"); // Current time when the request is received, keep as dayjs object
-        console.log("Current time in /bookings:", currentTime.format('YYYY-MM-DD HH:mm:ss [IST]')); // For debugging
+        const currentTime = new Date(); // Current time when the request is received
 
         const shopCheck = await client.query('SELECT shop_id, shop_name FROM shops WHERE shop_id = $1 AND is_active = TRUE', [shop_id]);
         if (shopCheck.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shop not found or inactive' }); }
@@ -1611,7 +1581,7 @@ app.post('/bookings', async (req, res) => {
             WHERE emp_id = $1 AND customer_id = $2
             AND DATE(join_time) = DATE($3)
             AND status IN ('booked', 'in_service')
-        `, [emp_id, customer_id, currentTime.toDate()]);
+        `, [emp_id, customer_id, currentTime]);
         if (existingBookingForCustomer.rowCount > 0) {
             await client.query('ROLLBACK');
             return res.status(409).json({ error: 'Customer already has an active booking with this employee today' });
@@ -1656,19 +1626,19 @@ app.post('/bookings', async (req, res) => {
 
         // 2. Determine the earliest possible start time for any new service
         // This is now + 5 minutes buffer
-        let potentialSlotStart = dayjs(currentTime.toDate().getTime() + bufferTimeMs).toDate();
+        let potentialSlotStart = new Date(currentTime.getTime() + bufferTimeMs);
 
         // 3. Iterate through existing bookings to find a gap
         // If there's an 'in_service' booking, the slot can't start before its end time
         if (activeBookings.rows.length > 0 && activeBookings.rows[0].status === 'in_service') {
-            potentialSlotStart = dayjs(Math.max(potentialSlotStart.getTime(), dayjs(activeBookings.rows[0].end_time).toDate().getTime() + bufferTimeMs)).toDate();
+            potentialSlotStart = new Date(Math.max(potentialSlotStart.getTime(), new Date(activeBookings.rows[0].end_time).getTime() + bufferTimeMs));
         }
 
         // Now iterate through the rest of the queue to find gaps
         for (let i = 0; i < activeBookings.rows.length; i++) {
             const currentBooking = activeBookings.rows[i];
-            const currentBookingStartTime = dayjs(currentBooking.join_time).toDate();
-            const currentBookingEndTime = dayjs(currentBooking.end_time).toDate();
+            const currentBookingStartTime = new Date(currentBooking.join_time);
+            const currentBookingEndTime = new Date(currentBooking.end_time);
 
             // Check the gap *before* the current booking
             // The gap must be large enough to accommodate the new booking + buffer
@@ -1681,7 +1651,7 @@ app.post('/bookings', async (req, res) => {
 
             // Move potentialSlotStart to after the current booking
             // This sets up the check for the gap *after* the current booking
-            potentialSlotStart = dayjs(currentBookingEndTime.getTime() + bufferTimeMs).toDate();
+            potentialSlotStart = new Date(currentBookingEndTime.getTime() + bufferTimeMs);
         }
 
         // If no slot was found in between, place it at the very end of the queue
@@ -1690,7 +1660,7 @@ app.post('/bookings', async (req, res) => {
         }
         // --- END OF CORE LOGIC ---
 
-        const endTime = dayjs(actualJoinTime.getTime() + bookingDurationMs).toDate();
+        const endTime = new Date(actualJoinTime.getTime() + bookingDurationMs);
 
         const service_type = services.map(s => ({
             id: s.service_id,
@@ -1699,7 +1669,7 @@ app.post('/bookings', async (req, res) => {
         }));
 
         let initialStatus = 'booked';
-        if (actualJoinTime <= currentTime.toDate()) {
+        if (actualJoinTime <= currentTime) {
             initialStatus = 'in_service';
         }
 
@@ -1771,13 +1741,13 @@ app.post('/bookings', async (req, res) => {
                     end_time_display: dayjs(endTime).format('MMM DD, YYYY - hh:mm A')
                 },
                 estimated_wait_time: initialStatus === 'booked' ?
-                    Math.max(0, Math.ceil((actualJoinTime - currentTime.toDate().getTime()) / (1000 * 60))) + ' minutes' :
+                    Math.max(0, Math.ceil((actualJoinTime - currentTime) / (1000 * 60))) + ' minutes' :
                     'Service starting now',
                 automatic_status_info: {
                     will_start_at: dayjs(actualJoinTime).format('MMM DD, YYYY - hh:mm A'),
                     will_complete_at: dayjs(endTime).format('MMM DD, YYYY - hh:mm A'),
                     status_changes: {
-                        to_in_service: actualJoinTime <= currentTime.toDate() ? 'Already started' : 'When join_time is reached',
+                        to_in_service: actualJoinTime <= currentTime ? 'Already started' : 'When join_time is reached',
                         to_completed: 'Automatically when service ends'
                     }
                 }
@@ -1795,12 +1765,6 @@ app.post('/bookings', async (req, res) => {
         client.release();
     }
 });
-
-// Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' is imported
-
-// Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' is imported
-
-// Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' is imported
 
 app.post('/bookings/cancel', async (req, res) => {
     const { customer_id, booking_id } = req.body;
@@ -2023,8 +1987,7 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
         return;
     }
 
-    const currentTime = dayjs().tz("Asia/Kolkata"); // Use dayjs for current time, keep as dayjs object
-    console.log("Current time in updateSubsequentBookings:", currentTime.format('YYYY-MM-DD HH:mm:ss [IST]')); // For debugging
+    const currentTime = new Date();
 
     const timeToShift = cancelledServiceDurationMinutes * 60000; // minutes to ms
 
@@ -2041,28 +2004,28 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
     `, [empId, cancelledBookingOriginalEndTime]);
 
     if (precedingBookingQuery.rowCount > 0) {
-        effectivePreviousEndTime = dayjs(precedingBookingQuery.rows[0].end_time).toDate().getTime();
+        effectivePreviousEndTime = new Date(precedingBookingQuery.rows[0].end_time).getTime();
     } else {
-        effectivePreviousEndTime = currentTime.toDate().getTime();
+        effectivePreviousEndTime = currentTime.getTime();
     }
 
-    let currentCalculatedTime = dayjs(effectivePreviousEndTime + 5 * 60000).toDate();
-    currentCalculatedTime = dayjs(Math.max(currentCalculatedTime.getTime(), currentTime.toDate().getTime() + 5 * 60000)).toDate();
+    let currentCalculatedTime = new Date(effectivePreviousEndTime + 5 * 60000);
+    currentCalculatedTime = new Date(Math.max(currentCalculatedTime.getTime(), currentTime.getTime() + 5 * 60000));
 
     for (const booking of subsequentBookings) {
-        const originalJoinTime = dayjs(booking.join_time).toDate();
-        const originalEndTime = dayjs(booking.end_time).toDate();
+        const originalJoinTime = new Date(booking.join_time);
+        const originalEndTime = new Date(booking.end_time);
         const customerId = booking.customer_id;
 
-        const originalEstimatedWaitTime = Math.max(0, Math.ceil((originalJoinTime.getTime() - currentTime.toDate().getTime()) / (1000 * 60)));
+        const originalEstimatedWaitTime = Math.max(0, Math.ceil((originalJoinTime.getTime() - currentTime.getTime()) / (1000 * 60)));
 
         let newJoinTime;
         let newEndTime;
 
-        newJoinTime = dayjs(Math.max(originalJoinTime.getTime() - timeToShift, currentCalculatedTime.getTime())).toDate();
-        newEndTime = dayjs(newJoinTime.getTime() + booking.service_duration_minutes * 60000).toDate();
+        newJoinTime = new Date(Math.max(originalJoinTime.getTime() - timeToShift, currentCalculatedTime.getTime()));
+        newEndTime = new Date(newJoinTime.getTime() + booking.service_duration_minutes * 60000);
 
-        const newEstimatedWaitTime = Math.max(0, Math.ceil((newJoinTime.getTime() - currentTime.toDate().getTime()) / (1000 * 60)));
+        const newEstimatedWaitTime = Math.max(0, Math.ceil((newJoinTime.getTime() - currentTime.getTime()) / (1000 * 60)));
 
         if (newJoinTime.getTime() !== originalJoinTime.getTime() || newEndTime.getTime() !== originalEndTime.getTime()) {
             await client.query(
@@ -2119,10 +2082,9 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
                 });
             }
         }
-        currentCalculatedTime = dayjs(newEndTime.getTime() + 5 * 60000).toDate();
+        currentCalculatedTime = new Date(newEndTime.getTime() + 5 * 60000);
     }
 }
-// --- Route to get bookings for a specific customer with filters and pagination ---
 // --- Route to get bookings for a specific customer with filters and pagination ---
 app.post('/getBookingsbycustomer', async (req, res) => {
     const {
@@ -2154,8 +2116,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
 
     try {
         // Define currentTime at the beginning of the route handler for consistent time calculations
-        const currentTime = dayjs().tz("Asia/Kolkata"); // Use dayjs for current time, keep as dayjs object
-        console.log("Current time in /getBookingsbycustomer:", currentTime.format('YYYY-MM-DD HH:mm:ss [IST]')); // For debugging
+        const currentTime = new Date();
 
         // It's good practice to update booking statuses before fetching,
         // ensuring the data is as current as possible.
@@ -2189,7 +2150,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         }
 
         if (date) {
-            const dateObj = dayjs(date).toDate(); // Use dayjs to parse date
+            const dateObj = new Date(date);
             if (!isNaN(dateObj.getTime())) { // Check if date is valid
                 query += ` AND DATE(b.join_time) = DATE($${paramIndex})`;
                 queryParams.push(dateObj);
@@ -2251,7 +2212,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         }
 
         if (date) {
-            const dateObj = dayjs(date).toDate(); // Use dayjs to parse date
+            const dateObj = new Date(date);
             if (!isNaN(dateObj.getTime())) {
                 countQuery += ` AND DATE(b.join_time) = DATE($${countParamIndex})`;
                 countParams.push(dateObj);
@@ -2278,18 +2239,18 @@ app.post('/getBookingsbycustomer', async (req, res) => {
         // Process and format each booking's data for the response
         const bookings = result.rows.map(booking => {
             let timeInfo = {}; // Object to hold time-related display information
-            const joinTime = dayjs(booking.join_time).toDate();
-            const endTime = dayjs(booking.end_time).toDate();
+            const joinTime = new Date(booking.join_time);
+            const endTime = new Date(booking.end_time);
 
             // Populate timeInfo based on the booking status
             if (booking.status === 'booked') {
-                const timeUntilStart = Math.max(0, Math.ceil((joinTime - currentTime.toDate().getTime()) / (1000 * 60)));
+                const timeUntilStart = Math.max(0, Math.ceil((joinTime - currentTime) / (1000 * 60)));
                 timeInfo = {
                     time_until_service: timeUntilStart + ' minutes',
                     estimated_start: dayjs(joinTime).format('hh:mm A')
                 };
             } else if (booking.status === 'in_service') {
-                const timeUntilEnd = Math.max(0, Math.ceil((endTime - currentTime.toDate().getTime()) / (1000 * 60)));
+                const timeUntilEnd = Math.max(0, Math.ceil((endTime - currentTime) / (1000 * 60)));
                 timeInfo = {
                     time_remaining: timeUntilEnd + ' minutes',
                     estimated_completion: dayjs(endTime).format('hh:mm A')
@@ -2330,7 +2291,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
 
         if (date) {
             statusSummaryQuery += ` AND DATE(b.join_time) = DATE($${statusSummaryParamIndex})`;
-            statusSummaryParams.push(dayjs(date).toDate()); // Use dayjs to parse date
+            statusSummaryParams.push(date);
             statusSummaryParamIndex++;
         }
         if (shop_id && Number.isInteger(parseInt(shop_id))) {
@@ -2380,7 +2341,7 @@ app.post('/getBookingsbycustomer', async (req, res) => {
             summary: {
                 total_bookings_for_customer: totalCount,
                 status_breakdown: statusCounts,
-                last_status_update: dayjs().toISOString() // Timestamp of when statuses were last updated/fetched
+                last_status_update: new Date().toISOString() // Timestamp of when statuses were last updated/fetched
             }
         });
 
@@ -2423,8 +2384,7 @@ app.post('/getAllBookings', async (req, res) => {
 
     try {
         // Define currentTime at the beginning of the route handler
-        const currentTime = dayjs().tz("Asia/Kolkata"); // Use dayjs for current time, keep as dayjs object
-        console.log("Current time in /getAllBookings:", currentTime.format('YYYY-MM-DD HH:mm:ss [IST]')); // For debugging
+        const currentTime = new Date(); 
 
         // Update statuses first (assumes updateBookingStatuses is defined elsewhere and accessible)
         // This ensures booking statuses are up-to-date before fetching.
@@ -2457,7 +2417,7 @@ app.post('/getAllBookings', async (req, res) => {
         }
 
         if (date) {
-            const dateObj = dayjs(date).toDate(); // Use dayjs to parse date
+            const dateObj = new Date(date);
             if (!isNaN(dateObj.getTime())) {
                 query += ` AND DATE(b.join_time) = DATE($${paramIndex})`;
                 queryParams.push(dateObj);
@@ -2524,7 +2484,7 @@ app.post('/getAllBookings', async (req, res) => {
         }
 
         if (date) {
-            const dateObj = dayjs(date).toDate(); // Use dayjs to parse date
+            const dateObj = new Date(date);
             if (!isNaN(dateObj.getTime())) {
                 countQuery += ` AND DATE(b.join_time) = DATE($${countParamIndex})`;
                 countParams.push(dateObj);
@@ -2547,7 +2507,7 @@ app.post('/getAllBookings', async (req, res) => {
         if (customer_id && Number.isInteger(parseInt(customer_id))) {
             countQuery += ` AND b.customer_id = $${countParamIndex}`;
             countParams.push(parseInt(customer_id));
-            countParamIndex++;
+            paramIndex++;
         }
 
         const countResult = await pool.query(countQuery, countParams);
@@ -2557,17 +2517,17 @@ app.post('/getAllBookings', async (req, res) => {
         const bookings = result.rows.map(booking => {
             // Calculate time information based on status
             let timeInfo = {};
-            const joinTime = dayjs(booking.join_time).toDate();
-            const endTime = dayjs(booking.end_time).toDate();
+            const joinTime = new Date(booking.join_time);
+            const endTime = new Date(booking.end_time);
 
             if (booking.status === 'booked') {
-                const timeUntilStart = Math.max(0, Math.ceil((joinTime - currentTime.toDate().getTime()) / (1000 * 60)));
+                const timeUntilStart = Math.max(0, Math.ceil((joinTime - currentTime) / (1000 * 60)));
                 timeInfo = {
                     time_until_service: timeUntilStart + ' minutes',
                     estimated_start: dayjs(joinTime).format('hh:mm A')
                 };
             } else if (booking.status === 'in_service') {
-                const timeUntilEnd = Math.max(0, Math.ceil((endTime - currentTime.toDate().getTime()) / (1000 * 60)));
+                const timeUntilEnd = Math.max(0, Math.ceil((endTime - currentTime) / (1000 * 60)));
                 timeInfo = {
                     time_remaining: timeUntilEnd + ' minutes',
                     estimated_completion: dayjs(endTime).format('hh:mm A')
@@ -2608,7 +2568,7 @@ app.post('/getAllBookings', async (req, res) => {
 
         if (date) {
             statusSummaryQuery += ` AND DATE(b.join_time) = DATE($${statusSummaryParamIndex})`;
-            statusSummaryParams.push(dayjs(date).toDate()); // Use dayjs to parse date
+            statusSummaryParams.push(date);
             statusSummaryParamIndex++;
         }
         if (shop_id && Number.isInteger(parseInt(shop_id))) {
@@ -2624,7 +2584,7 @@ app.post('/getAllBookings', async (req, res) => {
         if (customer_id && Number.isInteger(parseInt(customer_id))) {
             statusSummaryQuery += ` AND b.customer_id = $${statusSummaryParamIndex}`;
             statusSummaryParams.push(parseInt(customer_id));
-            paramIndex++;
+            statusSummaryParamIndex++;
         }
         statusSummaryQuery += ` GROUP BY status`;
 
@@ -2661,7 +2621,7 @@ app.post('/getAllBookings', async (req, res) => {
             summary: {
                 total_bookings: totalCount,
                 status_breakdown: statusCounts,
-                last_status_update: dayjs().toISOString()
+                last_status_update: new Date().toISOString()
             }
         });
 
@@ -2750,15 +2710,19 @@ app.put('/employees/:emp_id/status', async (req, res) => {
 });
 
 
-// New root path for Vercel deployment
+// Health check route - This is the route that Vercel will hit to confirm your deployment is successful.
+// It will also be the route you can visit to see the success message.
 app.get('/', (req, res) => {
     res.status(200).send('TrimTadka backend running successfully');
 });
 
+// Start the server
+// For Vercel, you don't need to explicitly call app.listen() if you export the app.
+// Vercel's build process handles starting the server.
+// However, keeping it for local development is fine.
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+});
+
 // Export the app for Vercel
 module.exports = app;
-
-// The app.listen is removed as Vercel handles this.
-// app.listen(port, () => {
-//     console.log(`Server running on port ${port}`);
-// });
