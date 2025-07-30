@@ -868,7 +868,7 @@ if (totalQueueMinutes > 0) {
                   </select>
                 </div>
               </div>
-              <div className="flex-1">
+{/*               <div className="flex-1">
                 <label htmlFor="filterDate" className="sr-only">Filter by Date</label>
                 <div className="relative">
                   <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[#cb3a1e]" />
@@ -880,7 +880,7 @@ if (totalQueueMinutes > 0) {
                     className="block w-full pl-10 pr-3 py-2 text-[12px] rounded-2xl focus:outline-none focus:ring-[#cb3a1e] focus:border-[#cb3a1e] sm:text-sm bg-white text-[#cb3a1e] font-medium uppercase tracking-wider"
                   />
                 </div>
-              </div>
+              </div> */}
               <div className="flex-1">
                 <label htmlFor="itemsPerPage" className="sr-only">Items per Page</label>
                 <div className="relative">
