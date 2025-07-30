@@ -73,9 +73,9 @@ body {
 }
 
 .header-blur {
-  background-color: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  transform: translateZ(0); /* Add this */
-  will-change: transform; /* Add this as a hint to the browser */
+  background: rgba(255, 255, 255, 0.1); /* semi-transparent for the blur effect */
+  backdrop-filter: blur(10px); /* main blur effect */
+  -webkit-backdrop-filter: blur(10px); /* for Safari support */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2); /* subtle border for separation */
+  z-index: 999;
 }
