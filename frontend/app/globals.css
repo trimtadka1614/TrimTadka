@@ -73,7 +73,7 @@ body {
 }
 
 .header-blur {
- backdrop-filter: blur(20px); /* Adjust the pixel value for more or less blur */
-  -webkit-backdrop-filter: blur(20px); /* For Safari support */
-  
+  background-color: rgba(255, 255, 255, 0.1); /* Slightly transparent white */
+  backdrop-filter: blur(10px); /* Adjust the blur amount as needed */
+  -webkit-backdrop-filter: blur(10px); /* For Safari support */
 }
