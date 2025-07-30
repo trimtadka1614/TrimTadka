@@ -1,9 +1,4 @@
-# *
 User-agent: *
 Allow: /
 
-# Host
-Host: https://trim-tadka.vercel.app
-
-# Sitemaps
 Sitemap: https://trim-tadka.vercel.app/sitemap.xml
