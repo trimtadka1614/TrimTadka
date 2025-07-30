@@ -77,5 +77,5 @@ body {
   backdrop-filter: blur(10px); /* main blur effect */
   -webkit-backdrop-filter: blur(10px); /* for Safari support */
   border-bottom: 1px solid rgba(255, 255, 255, 0.2); /* subtle border for separation */
-  z-index: 999;
+  z-index: 9999999999999999999999999999999999999;
 }
