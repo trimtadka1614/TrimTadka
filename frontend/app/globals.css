@@ -71,3 +71,9 @@ body {
 .custom-scroll::-webkit-scrollbar-thumb:hover {
   background-color: #a52c17;
 }
+
+.header-blur {
+ backdrop-filter: blur(20px); /* Adjust the pixel value for more or less blur */
+  -webkit-backdrop-filter: blur(20px); /* For Safari support */
+  
+}
