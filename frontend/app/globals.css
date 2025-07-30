@@ -75,5 +75,4 @@ body {
 .header-blur {
   backdrop-filter: blur(10px); /* main blur effect */
   -webkit-backdrop-filter: blur(10px); /* for Safari support */
-  z-index: 9999999999999999999999999999999999999;
 }
