@@ -1,7 +1,9 @@
 "use client"
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { XMarkIcon, UserPlusIcon, ScissorsIcon, PhoneIcon, TagIcon, BriefcaseIcon } from '@heroicons/react/24/solid'; // Added BriefcaseIcon for role if needed
+import { XMarkIcon, UserPlusIcon, ScissorsIcon, PhoneIcon, TagIcon, BriefcaseIcon } from '@heroicons/react/24/solid';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
@@ -11,8 +13,6 @@ export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylis
     const [availableServices, setAvailableServices] = useState([]);
     const [selectedServiceIds, setSelectedServiceIds] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [success, setSuccess] = useState(null);
 
     useEffect(() => {
         if (isOpen) {
@@ -21,8 +21,6 @@ export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylis
             setEmpName('');
             setPhNumber('');
             setSelectedServiceIds([]);
-            setError(null);
-            setSuccess(null);
         }
     }, [isOpen]);
 
@@ -32,7 +30,7 @@ export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylis
             setAvailableServices(response.data.services);
         } catch (err) {
             console.error('Error fetching services:', err);
-            setError('Failed to load services. Please try again.');
+            toast.error('Failed to load services. Please try again.');
         }
     };
 
@@ -48,11 +46,9 @@ export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylis
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
-        setError(null);
-        setSuccess(null);
 
         if (!empName || !phNumber || selectedServiceIds.length === 0) {
-            setError('Please fill in all fields and select at least one service.');
+            toast.error('Please fill in all fields and select at least one service.');
             setLoading(false);
             return;
         }
@@ -64,14 +60,14 @@ export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylis
                 ph_number: phNumber,
                 service_ids: selectedServiceIds,
             });
-            setSuccess(response.data.message || 'Stylist registered successfully!');
+            toast.success('Stylist registered successfully!');
             onStylistRegistered(); // Notify parent to refresh data
             setTimeout(() => {
                 onClose(); // Close modal after a short delay
             }, 1500);
         } catch (err) {
             console.error('Error registering stylist:', err);
-            setError(err.response?.data?.error || 'Failed to register stylist. Please try again.');
+            toast.error(err.response?.data?.error || 'Failed to register stylist. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -81,6 +77,20 @@ export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylis
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 animate-fade-in uppercase tracking-wider ">
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+                toastClassName="custom-toast"
+                progressClassName="custom-progress"
+            />
             <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4 animate-scale-up border border-[#cb3a1e]">
                 <div className="flex justify-between items-center border-b pb-3 mb-4">
                     <h2 className="text-xl font-bold text-[#cb3a1e] flex items-center">
@@ -155,18 +165,6 @@ export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylis
                             <p className="text-sm text-gray-500">No services available. Please add services first.</p>
                         )}
                     </div>
-
-                    {error && (
-                        <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-md text-sm">
-                            {error}
-                        </div>
-                    )}
-                    {success && (
-                        <div className="bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-md text-sm">
-                            {success}
-                        </div>
-                    )}
-
                     <div className="flex justify-end space-x-3">
                         <button
                             type="button"
@@ -196,7 +194,7 @@ export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylis
                     </div>
                 </form>
             </div>
-             <style jsx>{`
+            <style jsx>{`
                 .custom-scrollbar::-webkit-scrollbar {
                     width: 8px;
                 }
