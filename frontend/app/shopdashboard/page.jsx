@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 
 import dayjs from 'dayjs'; // For date formatting
+import { ToastContainer, toast } from 'react-toastify';
 import {
     UsersIcon,
     ClockIcon,
@@ -135,95 +136,170 @@ export default function ShopDashboard() {
       }
     }, [shopId]); // Dependency changed to shopId
 
-    // Function to subscribe the shop to push notifications
-    const subscribeShop = useCallback(async () => {
-      // Use the consistently derived shopId here
-      if (!shopSwRegistration || !shopId || !VAPID_PUBLIC_KEY) {
-        console.warn('Cannot subscribe shop: Service Worker not registered, Shop not logged in, or VAPID Public Key missing.');
-        return;
-      }
+const subscribeShop = useCallback(async () => {
+  // Use the consistently derived shopId here
+  if (!shopSwRegistration || !shopId || !VAPID_PUBLIC_KEY) {
+    const warningMessage = 'Cannot subscribe shop: Service Worker not registered, Shop not logged in, or VAPID Public Key missing.';
+    console.warn(warningMessage);
+    toast.warn('Shop push notifications are not available at the moment.', {
+      position: "top-right",
+      autoClose: 4000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+    return;
+  }
 
-      if (isShopPushSubscribed) {
-        alert('This shop is already subscribed to push notifications!');
-        return;
-      }
+  if (isShopPushSubscribed) {
+    toast.info('This shop is already subscribed to push notifications!', {
+      position: "top-right",
+      autoClose: 3000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+    return;
+  }
 
-      try {
-        const pushSubscription = await shopSwRegistration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
-        });
-        console.log('Shop Push Subscription:', pushSubscription);
+  try {
+    const pushSubscription = await shopSwRegistration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
+    console.log('Shop Push Subscription:', pushSubscription);
 
-        // Send subscription to your backend's shop endpoint
-        const response = await fetch(`${API_BASE_URL}/shop/subscribe`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            shopId: shopId, // Use the consistently derived shopId
-            subscription: pushSubscription,
-          }),
-        });
+    // Send subscription to your backend's shop endpoint
+    const response = await fetch(`${API_BASE_URL}/shop/subscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        shopId: shopId, // Use the consistently derived shopId
+        subscription: pushSubscription,
+      }),
+    });
 
-        if (response.ok) {
-          alert('Successfully subscribed shop to push notifications!');
-          setIsShopPushSubscribed(true);
-        } else {
-          const errorData = await response.json();
-          alert(`Failed to subscribe shop: ${errorData.error || response.statusText}`);
-          // Optionally, unsubscribe from browser if backend failed to store
-          await pushSubscription.unsubscribe();
-        }
-      } catch (error) {
-        console.error('Error subscribing shop to push:', error);
-        alert('An error occurred during shop subscription. Please try again.');
-      }
-    }, [shopSwRegistration, shopId, isShopPushSubscribed]); // Dependency changed to shopId
+    if (response.ok) {
+      toast.success('Successfully subscribed shop to push notifications!', {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+      setIsShopPushSubscribed(true);
+    } else {
+      const errorData = await response.json();
+      const errorMessage = `Failed to subscribe shop: ${errorData.error || response.statusText}`;
+      toast.error(errorMessage, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+      // Optionally, unsubscribe from browser if backend failed to store
+      await pushSubscription.unsubscribe();
+    }
+  } catch (error) {
+    console.error('Error subscribing shop to push:', error);
+    toast.error('An error occurred during shop subscription. Please try again.', {
+      position: "top-right",
+      autoClose: 5000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+  }
+}, [shopSwRegistration, shopId, isShopPushSubscribed]);
 
-    // Function to unsubscribe the shop from push notifications
-    const unsubscribeShop = useCallback(async () => {
-      // Use the consistently derived shopId here
-      if (!shopSwRegistration || !shopId) {
-        console.warn('Cannot unsubscribe shop: Service Worker not registered or Shop not logged in.');
-        return;
-      }
+// Function to unsubscribe the shop from push notifications
+const unsubscribeShop = useCallback(async () => {
+  // Use the consistently derived shopId here
+  if (!shopSwRegistration || !shopId) {
+    const warningMessage = 'Cannot unsubscribe shop: Service Worker not registered or Shop not logged in.';
+    console.warn(warningMessage);
+    toast.warn('Unable to unsubscribe shop at the moment.', {
+      position: "top-right",
+      autoClose: 4000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+    return;
+  }
 
-      if (!isShopPushSubscribed) {
-        alert('This shop is not subscribed to push notifications.');
-        return;
-      }
+  if (!isShopPushSubscribed) {
+    toast.info('This shop is not subscribed to push notifications.', {
+      position: "top-right",
+      autoClose: 3000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+    return;
+  }
 
-      try {
-        const subscription = await shopSwRegistration.pushManager.getSubscription();
-        if (subscription) {
-          await subscription.unsubscribe();
-          console.log('Shop browser subscription removed.');
-        }
+  try {
+    const subscription = await shopSwRegistration.pushManager.getSubscription();
+    if (subscription) {
+      await subscription.unsubscribe();
+      console.log('Shop browser subscription removed.');
+    }
 
-        // Tell your backend to remove the shop's subscription
-        const response = await fetch(`${API_BASE_URL}/shop/unsubscribe`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ shopId: shopId }), // Use the consistently derived shopId
-        });
+    // Tell your backend to remove the shop's subscription
+    const response = await fetch(`${API_BASE_URL}/shop/unsubscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ shopId: shopId }), // Use the consistently derived shopId
+    });
 
-        if (response.ok) {
-          alert('Successfully unsubscribed shop from push notifications.');
-          setIsShopPushSubscribed(false);
-        } else {
-          const errorData = await response.json();
-          alert(`Failed to unsubscribe shop from backend: ${errorData.error || response.statusText}`);
-          // Optionally, re-subscribe in browser if backend failed to remove
-        }
-      } catch (error) {
-        console.error('Error unsubscribing shop:', error);
-        alert('An error occurred during shop unsubscription. Please try again.');
-      }
-    }, [shopSwRegistration, shopId, isShopPushSubscribed]); // Dependency changed to shopId
+    if (response.ok) {
+      toast.success('Successfully unsubscribed shop from push notifications.', {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+      setIsShopPushSubscribed(false);
+    } else {
+      const errorData = await response.json();
+      const errorMessage = `Failed to unsubscribe shop from backend: ${errorData.error || response.statusText}`;
+      toast.error(errorMessage, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+      // Optionally, re-subscribe in browser if backend failed to remove
+    }
+  } catch (error) {
+    console.error('Error unsubscribing shop:', error);
+    toast.error('An error occurred during shop unsubscription. Please try again.', {
+      position: "top-right",
+      autoClose: 5000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+  }
+}, [shopSwRegistration, shopId, isShopPushSubscribed]);
 
     // Initial setup for shop service worker and subscription status
     useEffect(() => {
@@ -600,6 +676,21 @@ if (totalQueueMinutes > 0) {
   </div>
 </header>
 
+
+ <ToastContainer
+  position="top-right"
+  autoClose={3000}
+  hideProgressBar={false}
+  newestOnTop={false}
+  closeOnClick
+  rtl={false}
+  pauseOnFocusLoss
+  draggable
+  pauseOnHover
+  theme="light"
+  toastClassName="custom-toast"
+  progressClassName="custom-progress"
+/>
 
 
         {error && (
