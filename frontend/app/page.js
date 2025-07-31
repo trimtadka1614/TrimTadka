@@ -281,15 +281,15 @@ export default function LoginPage() {
         {/* Logo and Header */}
         <div className="text-center mb-6 animate-fadeInDown"> {/* Adjusted mb-8 to mb-6 for tighter spacing */}
           <div className="relative inline-block">
-            <div className="absolute inset-0 rounded-full blur-xl opacity-30 animate-pulse"></div>
-            <Image
-              src="/trimtadka.png" // Placeholder for TrimTadka logo
-              alt="TrimTadka logo"
-              width={150}
-              height={70}
-              className="relative z-10 mx-auto"
-            />
-          </div>
+  <div className="absolute inset-0 rounded-full bg-white/60 blur-2xl"></div>
+  <Image
+    src="/trimtadka.png"
+    alt="TrimTadka logo"
+    width={150}
+    height={70}
+    className="relative z-10 mx-auto"
+  />
+</div>
            <div className="flex items-center justify-center w-full gap-4 mb-4">
                 <div className="flex-grow border-t border-white"></div>
                 <h2
