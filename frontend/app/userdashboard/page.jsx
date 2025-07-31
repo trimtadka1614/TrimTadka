@@ -4,6 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef, useCallback } from "react";
 import duration from "dayjs/plugin/duration";
 import Image from "next/image";
+// --- React Toastify imports ---
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import {
   ScissorsIcon,
   MapPinIcon,
@@ -164,192 +167,6 @@ function SearchBar({ searchQuery, setSearchQuery }) {
     </div>
   );
 }
-// === END SearchBar component ===
-// const ProgressTimer = ({ joinTime, estimatedStartTime }) => {
-//   const [progress, setProgress] = useState(0);
-//   const [showProgressBar, setShowProgressBar] = useState(true);
-//   const [debugInfo, setDebugInfo] = useState({});
-//   const rafRef = useRef(null);
-//   const isActiveRef = useRef(true);
-//   const lastUpdateRef = useRef(0);
-
-//   useEffect(() => {
-//     if (!estimatedStartTime || estimatedStartTime.trim() === "") {
-//       setShowProgressBar(false);
-//       setProgress(0);
-//       return;
-//     }
-
-//     setShowProgressBar(true);
-
-//     console.log("🔍 === TIMEZONE FIXED LOGIC START ===");
-//     console.log("📱 User Agent:", navigator.userAgent);
-//     console.log("🌍 Timezone:", Intl.DateTimeFormat().resolvedOptions().timeZone);
-//     console.log("⏰ Estimated Start Time Input:", estimatedStartTime);
-//     console.log("⏰ Join Time Input (UTC):", joinTime);
-
-//     // TIMEZONE FIX: Convert joinTime from UTC to local timezone (IST)
-//     const joinTimeLocal = dayjs(joinTime); // dayjs automatically converts to local timezone
-//     const joinTimeIST = joinTimeLocal.format("YYYY-MM-DD HH:mm:ss");
-//     console.log("⏰ Join Time (Local/IST):", joinTimeIST);
-//     console.log("⏰ Join Time Unix:", joinTimeLocal.unix());
-
-//     const [hourStr, minuteStrPart] = estimatedStartTime.split(":");
-//     const [minuteStr, meridian] = minuteStrPart.split(" ");
-//     let hour = parseInt(hourStr, 10);
-//     const minute = parseInt(minuteStr, 10);
-
-//     if (meridian === "PM" && hour !== 12) {
-//       hour += 12;
-//     } else if (meridian === "AM" && hour === 12) {
-//       hour = 0;
-//     }
-
-//     // Use the converted joinTime as the start reference instead of "now"
-//     const startTime = joinTimeLocal; // This is when the user joined (in local time)
-//     const now = dayjs(); // Current time
-    
-//     console.log("🚀 Start Time (when joined):", startTime.format("YYYY-MM-DD HH:mm:ss"));
-//     console.log("⏰ Current time:", now.format("YYYY-MM-DD HH:mm:ss"));
-
-//     // Create end time based on the same date as joinTime (not current date)
-//     let end = startTime.hour(hour).minute(minute).second(0).millisecond(0);
-//     console.log("🎯 End time (same day as join):", end.format("YYYY-MM-DD HH:mm:ss"));
-
-//     // Check if we need to move to next day based on join time, not current time
-//     if (end.isBefore(startTime) || end.isSame(startTime)) {
-//       end = end.add(1, "day");
-//       console.log("📅 End time adjusted to NEXT day:", end.format("YYYY-MM-DD HH:mm:ss"));
-//     }
-
-//     // Calculate total duration from join time to end time
-//     const totalDurationFromJoin = end.diff(startTime, "second");
-//     console.log("⏱️ Total Duration (from join to end):", totalDurationFromJoin, "seconds");
-//     console.log("📊 Duration in hours:", (totalDurationFromJoin / 3600).toFixed(2));
-
-//     // Calculate elapsed time since joining
-//     const elapsedSinceJoin = now.diff(startTime, "second");
-//     console.log("⏳ Elapsed since join:", elapsedSinceJoin, "seconds");
-
-//     if (totalDurationFromJoin <= 0) {
-//       console.warn("⚠️ Invalid duration calculation");
-//       setProgress(100);
-//       setDebugInfo({
-//         joinTimeLocal: joinTimeIST,
-//         currentTime: now.format("HH:mm:ss"),
-//         targetTime: end.format("HH:mm:ss"),
-//         remainingTime: 0,
-//         totalDuration: 0,
-//         percentage: "100.000000",
-//         status: "Invalid duration"
-//       });
-//       return () => {};
-//     }
-
-//     const animate = (timestamp) => {
-//       if (!isActiveRef.current) return;
-
-//       if (timestamp - lastUpdateRef.current >= 1000) {
-//         const currentTime = dayjs();
-//         const elapsedTime = currentTime.diff(startTime, "second");
-        
-//         // Calculate progress based on elapsed time since joining
-//         const percentage = Math.max(
-//           0,
-//           Math.min((elapsedTime / totalDurationFromJoin) * 100, 100)
-//         );
-
-//         const remainingTime = Math.max(0, totalDurationFromJoin - elapsedTime);
-
-//         console.log("🔄 Current:", currentTime.format("HH:mm:ss"));
-//         console.log("🚀 Started:", startTime.format("HH:mm:ss"));
-//         console.log("🎯 Target:", end.format("HH:mm:ss"));
-//         console.log("⏳ Elapsed since join:", elapsedTime, "seconds");
-//         console.log("📊 Progress:", percentage.toFixed(6), "%");
-
-//         setProgress(percentage);
-//         setDebugInfo({
-//           joinTimeLocal: joinTimeIST,
-//           currentTime: currentTime.format("HH:mm:ss"),
-//           startTime: startTime.format("HH:mm:ss"),
-//           targetTime: end.format("HH:mm:ss"),
-//           elapsedTime,
-//           remainingTime,
-//           totalDuration: totalDurationFromJoin,
-//           percentage: percentage.toFixed(6),
-//           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-//         });
-        
-//         lastUpdateRef.current = timestamp;
-
-//         if (percentage >= 100) {
-//           return;
-//         }
-//       }
-
-//       rafRef.current = requestAnimationFrame(animate);
-//     };
-
-//     rafRef.current = requestAnimationFrame(animate);
-
-//     return () => {
-//       isActiveRef.current = false;
-//       if (rafRef.current) {
-//         cancelAnimationFrame(rafRef.current);
-//       }
-//     };
-//   }, [estimatedStartTime, joinTime]);
-
-//   useEffect(() => {
-//     return () => {
-//       isActiveRef.current = false;
-//       if (rafRef.current) {
-//         cancelAnimationFrame(rafRef.current);
-//       }
-//     };
-//   }, []);
-
-//   if (!showProgressBar) {
-//     return null;
-//   }
-
-//   return (
-//     <div className="mt-6 w-full max-w-md mx-auto">
-//       <div className="flex items-center justify-between mb-1">
-//         <label className="text-sm tracking-wider uppercase font-semibold text-gray-700">
-//           Time Until Service Starts
-//         </label>
-//       </div>
-
-//       <div className="w-full h-2 bg-gray-300 rounded-full shadow-inner">
-//         <div
-//           className="h-2 rounded-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-500 ease-linear"
-//           style={{ 
-//             width: `${progress}%`,
-//             minWidth: progress > 0 ? '2px' : '0px',
-//             transform: 'translateZ(0)'
-//           }}
-//         />
-//       </div>
-
-//       <p className="text-sm font-bold tracking-wider uppercase text-gray-600 mt-1 text-right">
-//         {Math.round(progress)}% completed
-//       </p>
-      
-//       {/* Detailed debug info */}
-//       <div className="text-xs text-gray-500 mt-1 space-y-1 bg-gray-100 p-2 rounded">
-//         <div><strong>Progress:</strong> {debugInfo.percentage || "0"}%</div>
-//         <div><strong>Joined:</strong> {debugInfo.joinTimeLocal}</div>
-//         <div><strong>Started:</strong> {debugInfo.startTime}</div>
-//         <div><strong>Current:</strong> {debugInfo.currentTime}</div>
-//         <div><strong>Target:</strong> {debugInfo.targetTime}</div>
-//         <div><strong>Elapsed:</strong> {debugInfo.elapsedTime ? Math.round(debugInfo.elapsedTime / 60) : 0}min</div>
-//         <div><strong>Remaining:</strong> {debugInfo.remainingTime ? Math.round(debugInfo.remainingTime / 60) : 0}min</div>
-//         <div><strong>Total:</strong> {debugInfo.totalDuration ? Math.round(debugInfo.totalDuration / 60) : 0}min</div>
-//       </div>
-//     </div>
-//   );
-// };
 // === BookingModal Component ===
 function BookingModal({
   shopId,
@@ -378,7 +195,16 @@ function BookingModal({
     setIsBookingLoading(true);
 
     if (selectedServiceIds.length === 0) {
-      setBookingMessage("Please select at least one service.");
+      const errorMessage = "Please select at least one service.";
+      setBookingMessage(errorMessage);
+      toast.error(errorMessage, {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       setIsBookingLoading(false);
       return;
     }
@@ -403,26 +229,90 @@ function BookingModal({
       const data = await response.json();
 
       if (response.ok) {
-        setBookingMessage(data.message || "Booking created successfully!");
+        const successMessage = data.message || "Booking created successfully!";
+        setBookingMessage(successMessage);
+        
+        // Show success toast
+        toast.success(successMessage, {
+          position: "top-right",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+
         onBookingComplete(true, data.booking); // Pass success and booking data
-        // Close the modal after a successful booking
-        onClose();
+        
+        // Close the modal after a successful booking with a slight delay
+        setTimeout(() => {
+          onClose();
+        }, 1000);
       } else {
-        setBookingMessage(data.error || "Failed to create booking.");
-        setBookingErrorDetails(data.details || "");
-        onBookingComplete(
-          false,
-          null,
-          data.error || "Failed to create booking."
-        ); // Pass failure and error
+        const errorMessage = data.error || "Failed to create booking.";
+        const errorDetails = data.details || "";
+        
+        setBookingMessage(errorMessage);
+        setBookingErrorDetails(errorDetails);
+        
+        // Show error toast with details if available
+        toast.error(
+          errorDetails 
+            ? `${errorMessage}: ${errorDetails}` 
+            : errorMessage,
+          {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          }
+        );
+
+        onBookingComplete(false, null, errorMessage); // Pass failure and error
       }
     } catch (error) {
-      setBookingMessage("An unexpected error occurred during booking.");
+      const errorMessage = "An unexpected error occurred during booking.";
+      const networkError = "Network error or unexpected issue.";
+      
+      setBookingMessage(errorMessage);
       setBookingErrorDetails(error.message);
-      onBookingComplete(false, null, "Network error or unexpected issue."); // Pass failure and error
+      
+      // Show network error toast
+      toast.error(`${errorMessage} Please check your connection and try again.`, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+
+      onBookingComplete(false, null, networkError); // Pass failure and error
       console.error("Booking fetch error:", error);
     } finally {
       setIsBookingLoading(false);
+    }
+  };
+
+  // Toast notification for service selection (optional enhancement)
+  const handleServiceChangeWithToast = (serviceId) => {
+    const service = services.find(s => s.service_id === serviceId);
+    const isCurrentlySelected = selectedServiceIds.includes(serviceId);
+    
+    handleServiceChange(serviceId);
+    
+    // Optional: Show toast for service selection/deselection
+    if (!isCurrentlySelected && service) {
+      toast.info(`${service.service_name} added to your booking`, {
+        position: "bottom-right",
+        autoClose: 2000,
+        hideProgressBar: true,
+        closeOnClick: true,
+        pauseOnHover: false,
+        draggable: true,
+      });
     }
   };
 
@@ -458,7 +348,7 @@ function BookingModal({
                   <input
                     type="checkbox"
                     checked={selectedServiceIds.includes(service.service_id)}
-                    onChange={() => handleServiceChange(service.service_id)}
+                    onChange={() => handleServiceChangeWithToast(service.service_id)}
                     className="form-checkbox h-5 w-5 text-[#cb3a1e] rounded focus:ring-[#cb3a1e]"
                   />
                   <span className="ml-3 tracking-wider uppercase text-sm text-gray-800 font-medium flex-grow">
@@ -624,12 +514,28 @@ function urlB64ToUint8Array(base64String) {
 
   const subscribeUser = useCallback(async () => {
     if (!swRegistration || !session?.user?.id || !VAPID_PUBLIC_KEY) {
-      console.warn('Cannot subscribe: Service Worker not registered, User not logged in, or VAPID Public Key missing.');
+      const warningMessage = 'Cannot subscribe: Service Worker not registered, User not logged in, or VAPID Public Key missing.';
+      console.warn(warningMessage);
+      toast.warn('Push notifications are not available at the moment.', {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       return;
     }
 
     if (isPushSubscribed) {
-      alert('You are already subscribed to push notifications!');
+      toast.info('You are already subscribed to push notifications!', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       return;
     }
 
@@ -653,28 +559,66 @@ function urlB64ToUint8Array(base64String) {
       });
 
       if (response.ok) {
-        alert('Successfully subscribed to push notifications!');
+        toast.success('Successfully subscribed to push notifications!', {
+          position: "top-right",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
         setIsPushSubscribed(true);
       } else {
         const errorData = await response.json();
-        alert(`Failed to subscribe: ${errorData.error || response.statusText}`);
+        const errorMessage = `Failed to subscribe: ${errorData.error || response.statusText}`;
+        toast.error(errorMessage, {
+          position: "top-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
         // Optionally, unsubscribe from browser if backend failed to store
         await pushSubscription.unsubscribe();
       }
     } catch (error) {
       console.error('Error subscribing to push:', error);
-      alert('An error occurred during subscription. Please try again.');
+      toast.error('An error occurred during subscription. Please try again.', {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     }
-  }, [swRegistration, session?.user?.id, isPushSubscribed]);
+  }, [swRegistration, session?.user?.id, isPushSubscribed, VAPID_PUBLIC_KEY, setIsPushSubscribed]);
 
   const unsubscribeUser = useCallback(async () => {
     if (!swRegistration || !session?.user?.id) {
-      console.warn('Cannot unsubscribe: Service Worker not registered or User not logged in.');
+      const warningMessage = 'Cannot unsubscribe: Service Worker not registered or User not logged in.';
+      console.warn(warningMessage);
+      toast.warn('Unable to unsubscribe at the moment.', {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       return;
     }
 
     if (!isPushSubscribed) {
-      alert('You are not subscribed to push notifications.');
+      toast.info('You are not subscribed to push notifications.', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       return;
     }
 
@@ -695,19 +639,41 @@ function urlB64ToUint8Array(base64String) {
       });
 
       if (response.ok) {
-        alert('Successfully unsubscribed from push notifications.');
+        toast.success('Successfully unsubscribed from push notifications.', {
+          position: "top-right",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
         setIsPushSubscribed(false);
       } else {
         const errorData = await response.json();
-        alert(`Failed to unsubscribe from backend: ${errorData.error || response.statusText}`);
+        const errorMessage = `Failed to unsubscribe from backend: ${errorData.error || response.statusText}`;
+        toast.error(errorMessage, {
+          position: "top-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
         // Optionally, re-subscribe in browser if backend failed to remove
         // This is tricky, usually you want to ensure sync. User might need to retry.
       }
     } catch (error) {
       console.error('Error unsubscribing:', error);
-      alert('An error occurred during unsubscription. Please try again.');
+      toast.error('An error occurred during unsubscription. Please try again.', {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     }
-  }, [swRegistration, session?.user?.id, isPushSubscribed]);
+  }, [swRegistration, session?.user?.id, isPushSubscribed, setIsPushSubscribed]);
 
   // Initial setup for service worker and subscription status
   useEffect(() => {
@@ -927,9 +893,18 @@ function urlB64ToUint8Array(base64String) {
   }, []);
 
   // Function to handle booking cancellation
-  const handleCancelBooking = async () => {
+ const handleCancelBooking = async () => {
     if (!activeBooking || !session?.user?.id) {
-      setCancelMessage("No active booking to cancel.");
+      const errorMessage = "No active booking to cancel.";
+      setCancelMessage(errorMessage);
+      toast.warn(errorMessage, {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       return;
     }
 
@@ -955,23 +930,71 @@ function urlB64ToUint8Array(base64String) {
       const data = await response.json();
 
       if (response.ok) {
-        setCancelMessage(data.message || "Booking cancelled successfully!");
+        const successMessage = data.message || "Booking cancelled successfully!";
+        setCancelMessage(successMessage);
         setCancelErrorDetails("");
+        
+        // Show success toast
+        toast.success(successMessage, {
+          position: "top-right",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+
         setActiveBooking(null); // Clear active booking from state
+        
         // Optionally, refresh shops to reflect queue changes
-        if (userLocation) {
+        if (userLocation && fetchShops) {
           fetchShops(userLocation.lat, userLocation.long);
         }
-        if (selectedShop) {
+        if (selectedShop && fetchShopDetails) {
           fetchShopDetails(selectedShop.shop_id);
         }
+
+        // Close modal after successful cancellation
+        setTimeout(() => {
+          onClose();
+        }, 1500);
       } else {
-        setCancelMessage(data.error || "Failed to cancel booking.");
-        setCancelErrorDetails(data.details || "");
+        const errorMessage = data.error || "Failed to cancel booking.";
+        const errorDetails = data.details || "";
+        
+        setCancelMessage(errorMessage);
+        setCancelErrorDetails(errorDetails);
+        
+        // Show error toast with details if available
+        toast.error(
+          errorDetails 
+            ? `${errorMessage}: ${errorDetails}` 
+            : errorMessage,
+          {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          }
+        );
       }
     } catch (error) {
-      setCancelMessage("An unexpected error occurred during cancellation.");
+      const errorMessage = "An unexpected error occurred during cancellation.";
+      setCancelMessage(errorMessage);
       setCancelErrorDetails(error.message);
+      
+      // Show network error toast
+      toast.error(`${errorMessage} Please check your connection and try again.`, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+      
       console.error("Cancellation fetch error:", error);
     } finally {
       setIsCancellingBooking(false);
@@ -1401,6 +1424,20 @@ function urlB64ToUint8Array(base64String) {
   </div>
 </header>
 
+ <ToastContainer
+  position="top-right"
+  autoClose={3000}
+  hideProgressBar={false}
+  newestOnTop={false}
+  closeOnClick
+  rtl={false}
+  pauseOnFocusLoss
+  draggable
+  pauseOnHover
+  theme="light"
+  toastClassName="custom-toast"
+  progressClassName="custom-progress"
+/>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
