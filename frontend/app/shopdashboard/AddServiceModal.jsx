@@ -1,7 +1,10 @@
-"use client"
+'use client';
+
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { XMarkIcon, TagIcon, ClockIcon } from '@heroicons/react/24/solid';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
@@ -9,34 +12,28 @@ export default function AddServiceModal({ isOpen, onClose, onServiceAdded }) {
     const [serviceName, setServiceName] = useState('');
     const [serviceDuration, setServiceDuration] = useState('');
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [success, setSuccess] = useState(null);
 
     useEffect(() => {
         if (isOpen) {
             // Reset form when modal opens
             setServiceName('');
             setServiceDuration('');
-            setError(null);
-            setSuccess(null);
         }
     }, [isOpen]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
-        setError(null);
-        setSuccess(null);
 
         if (!serviceName || !serviceDuration) {
-            setError('Please fill in all fields.');
+            toast.error('Please fill in all fields.');
             setLoading(false);
             return;
         }
 
         const durationMinutes = parseInt(serviceDuration);
         if (isNaN(durationMinutes) || durationMinutes <= 0) {
-            setError('Service duration must be a positive number in minutes.');
+            toast.error('Service duration must be a positive number in minutes.');
             setLoading(false);
             return;
         }
@@ -46,14 +43,12 @@ export default function AddServiceModal({ isOpen, onClose, onServiceAdded }) {
                 service_name: serviceName,
                 service_duration_minutes: durationMinutes,
             });
-            setSuccess(response.data.message || 'Service added successfully!');
-            onServiceAdded(); // Notify parent to refresh data (if needed, e.g., for stylist registration)
-            setTimeout(() => {
-                onClose(); // Close modal after a short delay
-            }, 1500);
+            toast.success(response.data.message || 'Service added successfully!');
+            onServiceAdded(); // Notify parent to refresh data
+            
         } catch (err) {
             console.error('Error adding service:', err);
-            setError(err.response?.data?.error || 'Failed to add service. Please try again.');
+            toast.error(err.response?.data?.error || 'Failed to add service. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -63,6 +58,20 @@ export default function AddServiceModal({ isOpen, onClose, onServiceAdded }) {
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 animate-fade-in uppercase tracking-wider">
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+                toastClassName="custom-toast"
+                progressClassName="custom-progress"
+            />
             <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4 animate-scale-up border border-[#cb3a1e]">
                 <div className="flex justify-between items-center border-b pb-3 mb-4">
                     <h2 className="text-xl font-bold text-[#cb3a1e] flex items-center">
@@ -112,18 +121,6 @@ export default function AddServiceModal({ isOpen, onClose, onServiceAdded }) {
                             </div>
                         </div>
                     </div>
-
-                    {error && (
-                        <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-md text-sm">
-                            {error}
-                        </div>
-                    )}
-                    {success && (
-                        <div className="bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-md text-sm">
-                            {success}
-                        </div>
-                    )}
-
                     <div className="flex justify-end space-x-3">
                         <button
                             type="button"
