@@ -73,7 +73,7 @@ body {
 }
 
 .custom-toast {
-  height: 85px;             /* increased notification height */
+  height: 70px;             /* increased notification height */
   font-size: 12px;               /* bigger font */
   font-family: 'Poppins';
   text-transform: uppercase;     /* make all text uppercase */
