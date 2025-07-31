@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { UserIcon, PhoneIcon, TagIcon, BriefcaseIcon, RefreshIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/solid';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
@@ -9,9 +11,8 @@ export default function ShopEmployeesTable({ shopId }) {
     const [employees, setEmployees] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    // State to manage loading/message for individual employee actions
-    const [actionStatus, setActionStatus] = useState({}); // { empId: { loading: boolean, message: string, type: 'success' | 'error' } }
-
+    // State to manage the loading status for individual employee actions
+    const [actionStatus, setActionStatus] = useState({}); // { empId: { loading: boolean } }
 
     const fetchEmployees = useCallback(async () => {
         if (!shopId) {
@@ -37,7 +38,8 @@ export default function ShopEmployeesTable({ shopId }) {
     }, [fetchEmployees]);
 
     const handleEmployeeStatusToggle = async (empId, currentStatus, empName) => {
-        setActionStatus(prev => ({ ...prev, [empId]: { loading: true, message: null, type: '' } }));
+        // Set loading status for the specific employee
+        setActionStatus(prev => ({ ...prev, [empId]: { loading: true } }));
         const newStatus = !currentStatus;
 
         try {
@@ -50,30 +52,15 @@ export default function ShopEmployeesTable({ shopId }) {
                     emp.emp_id === empId ? { ...emp, is_active: newStatus } : emp
                 )
             );
-            setActionStatus(prev => ({
-                ...prev,
-                [empId]: {
-                    loading: false,
-                    message: response.data.message || `${empName} is now ${newStatus ? 'Active' : 'Inactive'}.`,
-                    type: 'success'
-                }
-            }));
-            setTimeout(() => {
-                setActionStatus(prev => ({ ...prev, [empId]: null })); // Clear message
-            }, 3000);
+            // Show a success toast
+            toast.success(response.data.message || `${empName} is now ${newStatus ? 'Active' : 'Inactive'}.`);
         } catch (err) {
             console.error('Error updating employee status:', err);
-            setActionStatus(prev => ({
-                ...prev,
-                [empId]: {
-                    loading: false,
-                    message: err.response?.data?.error || `Failed to update ${empName}'s status.`,
-                    type: 'error'
-                }
-            }));
-            setTimeout(() => {
-                setActionStatus(prev => ({ ...prev, [empId]: null })); // Clear message
-            }, 3000);
+            // Show an error toast
+            toast.error(err.response?.data?.error || `Failed to update ${empName}'s status.`);
+        } finally {
+            // Clear the loading status for the specific employee
+            setActionStatus(prev => ({ ...prev, [empId]: { loading: false } }));
         }
     };
 
@@ -103,7 +90,7 @@ export default function ShopEmployeesTable({ shopId }) {
 
     if (employees.length === 0) {
         return (
-            <div className="text-center py-8 text-gray-600">
+            <div className="text-center py-8 text-white tracking-wider uppercase">
                 <BriefcaseIcon className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-lg font-medium">No Employees Found</h3>
                 <p className="mt-1 text-sm text-gray-500">
@@ -115,6 +102,20 @@ export default function ShopEmployeesTable({ shopId }) {
 
     return (
         <div className="w-[100%] mx-auto px-4 sm:px-6 lg:px-8 py-8 ">
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+                toastClassName="custom-toast"
+                progressClassName="custom-progress"
+            />
             <h2 className="text-lg font-extrabold text-white mb-6 flex items-center justify-start uppercase tracking-wider">
                 <UserIcon className="h-6 w-6 mr-2 text-[#cb3a1e] animate-pulse" />
                 Your Stylists
@@ -198,11 +199,6 @@ export default function ShopEmployeesTable({ shopId }) {
                                         )}
                                         {employee.is_active ? 'Deactivate' : 'Activate'}
                                     </button>
-                                    {actionStatus[employee.emp_id]?.message && (
-                                        <div className={`mt-1 text-center text-xs ${actionStatus[employee.emp_id].type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
-                                            {actionStatus[employee.emp_id].message}
-                                        </div>
-                                    )}
                                 </td>
                             </tr>
                         ))}
