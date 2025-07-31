@@ -1525,7 +1525,7 @@ async function updateBookingStatuses() {
                 await sendNotificationToCustomer(row.customer_id, {
                     title: 'Your Service Has Started!',
                     body: `Your booking (ID: ${row.booking_id}) is now in service.`,
-                    url: `/dashboard?bookingId=${row.booking_id}`,
+                    url: `/userdashboard`,
                     bookingId: row.booking_id,
                     type: 'status_in_service',
                 });
@@ -1539,7 +1539,7 @@ async function updateBookingStatuses() {
                 await sendNotificationToShop(row.shop_id, {
                     title: 'Booking Started!',
                     body: `Booking (ID: ${row.booking_id}) with ${empName} is now in service.`,
-                    url: `/shop/dashboard?bookingId=${row.booking_id}`,
+                    url: `/shopdashboard`,
                     bookingId: row.booking_id,
                     type: 'shop_booking_started',
                 });
@@ -1562,7 +1562,7 @@ async function updateBookingStatuses() {
                 await sendNotificationToCustomer(row.customer_id, {
                     title: 'Service Completed!',
                     body: `Your service for booking (ID: ${row.booking_id}) has been completed.`,
-                    url: `/dashboard/history?bookingId=${row.booking_id}`,
+                    url: `/userdashboard`,
                     bookingId: row.booking_id,
                     type: 'status_completed',
                 });
@@ -1576,7 +1576,7 @@ async function updateBookingStatuses() {
                 await sendNotificationToShop(row.shop_id, {
                     title: 'Booking Completed!',
                     body: `Booking (ID: ${row.booking_id}) with ${empName} has been completed.`,
-                    url: `/shop/dashboard/history?bookingId=${row.booking_id}`,
+                    url: `/shopdashboard`,
                     bookingId: row.booking_id,
                     type: 'shop_booking_completed',
                 });
@@ -1599,7 +1599,7 @@ async function updateBookingStatuses() {
                 await sendNotificationToCustomer(row.customer_id, {
                     title: 'Appointment Missed',
                     body: `Your booking (ID: ${row.booking_id}) at Shop ${row.shop_id} was cancelled as you missed your appointment.`,
-                    url: `/dashboard/history?bookingId=${row.booking_id}`,
+                    url: `/userdashboard`,
                     bookingId: row.booking_id,
                     type: 'status_missed',
                 });
@@ -1613,7 +1613,7 @@ async function updateBookingStatuses() {
                 await sendNotificationToShop(row.shop_id, {
                     title: 'Booking Missed!',
                     body: `Booking (ID: ${row.booking_id}) with ${empName} was missed by the customer.`,
-                    url: `/shop/dashboard?bookingId=${row.booking_id}`,
+                    url: `/shopdashboard`,
                     bookingId: row.booking_id,
                     type: 'shop_booking_missed',
                 });
@@ -1832,7 +1832,7 @@ app.post('/bookings', async (req, res) => {
             await sendNotificationToCustomer(customer_id, {
                 title: 'Booking Confirmed!',
                 body: `Your booking (ID: ${newBooking.booking_id}) at ${shopCheck.rows[0].shop_name} with ${empCheck.rows[0].emp_name} is confirmed for ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST 
-                url: `/dashboard?bookingId=${newBooking.booking_id}`,
+                url: `/userdashboard`,
                 bookingId: newBooking.booking_id,
                 type: 'new_booking_customer',
             });
@@ -1841,7 +1841,7 @@ app.post('/bookings', async (req, res) => {
         await sendNotificationToShop(shop_id, {
             title: 'New Booking Received!',
             body: `A new booking (ID: ${newBooking.booking_id}) has been made with ${empCheck.rows[0].emp_name} for ${customerName} at ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST 
-            url: `/shop/dashboard?bookingId=${newBooking.booking_id}`,
+            url: `/shopdashboard`,
             bookingId: newBooking.booking_id,
             type: 'new_booking_shop',
         });
@@ -1961,7 +1961,7 @@ app.post('/bookings/cancel', async (req, res) => {
             await sendNotificationToShop(shop_id, {
                 title: 'Booking Cancelled by Customer!',
                 body: `Booking (ID: ${booking_id}) with ${empName} for ${customerName} at ${dayjs.utc(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the customer.`, // Formatted in IST
-                url: `/shop/dashboard?bookingId=${booking_id}`,
+                url: `/shopdashboard`,
                 bookingId: booking_id,
                 type: 'shop_booking_customer_cancelled',
             });
@@ -2055,7 +2055,7 @@ app.post('/shop/bookings/cancel', async (req, res) => {
             const notificationPayload = {
                 title: 'Booking Cancelled!',
                 body: `Your booking (ID: ${booking_id}) on ${dayjs.utc(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD')} at ${dayjs.utc(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the shop.`, // Formatted in IST
-                url: `/dashboard?bookingId=${booking_id}`, // Link to customer's dashboard or specific booking
+                url: `/userdashboard`, // Link to customer's dashboard or specific booking
                 bookingId: booking_id,
                 type: 'booking_cancelled', // Custom type for client-side handling
             };
@@ -2068,7 +2068,7 @@ app.post('/shop/bookings/cancel', async (req, res) => {
             await sendNotificationToShop(shop_id, {
                 title: 'Booking Successfully Cancelled!',
                 body: `You have successfully cancelled booking (ID: ${booking_id}) for ${dayjs.utc(join_time).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
-                url: `/shop/dashboard?bookingId=${booking_id}`,
+                url: `/shopdashboard`,
                 bookingId: booking_id,
                 type: 'shop_booking_self_cancelled',
             });
@@ -2181,7 +2181,7 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
                     notificationPayload = {
                         title: 'Booking Time Shifted!',
                         body: `Your booking (ID: ${booking.booking_id}) is now scheduled ${timeDifference} minutes earlier. New start time: ${dayjs.utc(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
-                        url: `/dashboard?bookingId=${booking.booking_id}`,
+                        url: `/userdashboard`,
                         bookingId: booking.booking_id,
                         type: 'time_shift',
                     };
@@ -2191,7 +2191,7 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
                     notificationPayload = {
                         title: 'Get Ready Soon!',
                         body: `Your estimated wait time for booking (ID: ${booking.booking_id}) is now less than 10 minutes.`,
-                        url: `/dashboard?bookingId=${booking.booking_id}`,
+                        url: `/userdashboard`,
                         bookingId: booking.booking_id,
                         type: 'wait_time_critical',
                     };
@@ -2212,7 +2212,7 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
                 await sendNotificationToShop(shopId, {
                     title: 'Queue Updated!',
                     body: `Booking (ID: ${booking.booking_id}) for ${customerName} with ${empName} has been shifted. New start time: ${dayjs.utc(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST
-                    url: `/shop/dashboard?bookingId=${booking.booking_id}`,
+                    url: `/shopdashboard`,
                     bookingId: booking.booking_id,
                     type: 'shop_queue_update',
                 });
