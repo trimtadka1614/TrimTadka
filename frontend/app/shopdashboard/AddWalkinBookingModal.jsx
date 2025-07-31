@@ -2,20 +2,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { XCircleIcon, UserIcon, TagIcon, PlusCircleIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/solid';
+import { XCircleIcon, UserIcon, TagIcon, PlusCircleIcon } from '@heroicons/react/24/solid';
 import { LoaderIcon } from "lucide-react";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
 export default function AddWalkinBookingModal({ shopId, isOpen, onClose, onBookingSuccess }) {
     const [employees, setEmployees] = useState([]);
-    // Removed allServices state as services are now nested within employee data
     const [filteredServices, setFilteredServices] = useState([]); // Services for the selected employee
     const [selectedEmployee, setSelectedEmployee] = useState('');
     const [selectedServices, setSelectedServices] = useState([]); // IDs of services selected for the booking
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [successMessage, setSuccessMessage] = useState(null);
 
     // Fetch employees when the modal opens or shopId changes
     useEffect(() => {
@@ -25,18 +24,12 @@ export default function AddWalkinBookingModal({ shopId, isOpen, onClose, onBooki
 
         const fetchData = async () => {
             setLoading(true);
-            setError(null);
-            setSuccessMessage(null);
             try {
-                // Fetch employees, which now directly include their associated services
                 const empResponse = await axios.get(`${API_BASE_URL}/shops/${shopId}/employees`);
                 setEmployees(empResponse.data.employees);
-
-                // No need to fetch all services separately anymore
-
             } catch (err) {
                 console.error('Error fetching data for walk-in booking:', err);
-                setError('Failed to load employees. Please try again.');
+                toast.error('Failed to load employees. Please try again.');
             } finally {
                 setLoading(false);
             }
@@ -54,7 +47,6 @@ export default function AddWalkinBookingModal({ shopId, isOpen, onClose, onBooki
         }
 
         const employee = employees.find(emp => emp.emp_id === parseInt(selectedEmployee));
-        // Directly use the 'services' array from the selected employee object
         if (employee && employee.services) {
             setFilteredServices(employee.services);
             setSelectedServices([]); // Clear selected services when employee changes
@@ -62,16 +54,14 @@ export default function AddWalkinBookingModal({ shopId, isOpen, onClose, onBooki
             setFilteredServices([]);
             setSelectedServices([]);
         }
-    }, [selectedEmployee, employees]); // Re-run when selectedEmployee or employees change
+    }, [selectedEmployee, employees]);
 
     // Reset form when modal closes
     useEffect(() => {
         if (!isOpen) {
             setSelectedEmployee('');
             setSelectedServices([]);
-            setError(null);
-            setSuccessMessage(null);
-            setFilteredServices([]); // Also clear filtered services
+            setFilteredServices([]);
         }
     }, [isOpen]);
 
@@ -87,11 +77,9 @@ export default function AddWalkinBookingModal({ shopId, isOpen, onClose, onBooki
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
-        setError(null);
-        setSuccessMessage(null);
 
         if (!selectedEmployee || selectedServices.length === 0) {
-            setError('Please select an employee and at least one service.');
+            toast.error('Please select an employee and at least one service.');
             setLoading(false);
             return;
         }
@@ -103,18 +91,14 @@ export default function AddWalkinBookingModal({ shopId, isOpen, onClose, onBooki
                 customer_id: 0, // For walk-in customers
                 service_ids: selectedServices,
             });
-            setSuccessMessage('Walk-in booking created successfully!');
-            // Call the callback to refresh parent component's data
+            toast.success('Walk-in booking created successfully!');
+            
             if (onBookingSuccess) {
                 onBookingSuccess();
             }
-            // Optionally close modal after a short delay or user action
-            setTimeout(() => {
-                onClose();
-            }, 2000);
         } catch (err) {
             console.error('Error creating walk-in booking:', err);
-            setError(err.response?.data?.error || 'Failed to create booking. Please try again.');
+            toast.error(err.response?.data?.error || 'Failed to create booking. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -124,6 +108,20 @@ export default function AddWalkinBookingModal({ shopId, isOpen, onClose, onBooki
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+                toastClassName="custom-toast"
+                progressClassName="custom-progress"
+            />
             <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 relative animate-scale-up">
                 <button
                     onClick={onClose}
@@ -140,20 +138,6 @@ export default function AddWalkinBookingModal({ shopId, isOpen, onClose, onBooki
                         <div className="flex items-center justify-center py-4">
                             <LoaderIcon className="h-8 w-8 animate-spin text-[#cb3a1e]" />
                             <span className="ml-3 text-gray-700 uppercase tracking-wider">Processing...</span>
-                        </div>
-                    )}
-
-                    {error && (
-                        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md flex items-center uppercase tracking-wider">
-                            <ExclamationCircleIcon className="h-5 w-5 mr-2" />
-                            <span>{error}</span>
-                        </div>
-                    )}
-
-                    {successMessage && (
-                        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-md flex items-center uppercase tracking-wider">
-                            <CheckCircleIcon className="h-5 w-5 mr-2" />
-                            <span>{successMessage}</span>
                         </div>
                     )}
 
