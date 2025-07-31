@@ -857,7 +857,7 @@ if (totalQueueMinutes > 0) {
   <div className="flex-grow border-t mb-4 mt-[-20px] border-white"></div>
 
  {currentQueueBookings && currentQueueBookings.length > 0 ? (
-  <div className="bg-white p-4 rounded-lg shadow-md overflow-x-auto custom-scroll">
+  <div className="bg-white  rounded-lg shadow-md overflow-x-auto custom-scroll">
     <ul className="min-w-[700px] w-full divide-y divide-gray-200">
       
       {/* Header */}
@@ -998,7 +998,7 @@ if (totalQueueMinutes > 0) {
             </div>
 
             {bookings && bookings.length > 0 ? (
-              <div className="bg-white p-4 rounded-lg shadow-md overflow-x-auto custom-scroll">
+              <div className="bg-white  rounded-lg shadow-md overflow-x-auto custom-scroll">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
