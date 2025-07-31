@@ -19,7 +19,7 @@ const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
 export default function ShopEmployeesTable({ shopId }) {
     const [employees, setEmployees] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [loadingInitial, setLoadingInitial] = useState(true); // Only for initial load
     const [error, setError] = useState(null);
     const [actionStatus, setActionStatus] = useState({}); // { empId: { loading: boolean } }
     const [employeeToDelete, setEmployeeToDelete] = useState(null); // State for delete confirmation modal
@@ -27,11 +27,11 @@ export default function ShopEmployeesTable({ shopId }) {
     // Fetch all employees for the given shopId
     const fetchEmployees = useCallback(async () => {
         if (!shopId) {
-            setLoading(false);
+            setLoadingInitial(false);
             return;
         }
 
-        setLoading(true);
+        // Do not set loading state to true here to avoid showing spinner on refresh
         setError(null);
         try {
             const response = await axios.get(`${API_BASE_URL}/shops/${shopId}/employees`);
@@ -40,14 +40,23 @@ export default function ShopEmployeesTable({ shopId }) {
             console.error('Error fetching employees:', err);
             setError(err.response?.data?.error || 'Failed to fetch employees. Please try again.');
         } finally {
-            setLoading(false);
+            setLoadingInitial(false); // Only set to false after initial fetch
         }
     }, [shopId]);
 
-    // Effect to fetch employees when the component mounts or shopId changes
+    // Effect to fetch employees when the component mounts or shopId changes, and for polling
     useEffect(() => {
+        // Initial fetch
         fetchEmployees();
-    }, [fetchEmployees]);
+
+        // Set up polling interval
+        const intervalId = setInterval(() => {
+            fetchEmployees();
+        }, 2000); // Poll every 2 seconds
+
+        // Cleanup interval on component unmount
+        return () => clearInterval(intervalId);
+    }, [fetchEmployees]); // Dependency on fetchEmployees ensures interval restarts if shopId changes
 
     // Handler to toggle employee status
     const handleEmployeeStatusToggle = useCallback(
@@ -59,6 +68,7 @@ export default function ShopEmployeesTable({ shopId }) {
                 const response = await axios.put(`${API_BASE_URL}/employees/${empId}/status`, {
                     is_active: newStatus,
                 });
+                // Optimistically update the UI, assuming success
                 setEmployees((prevEmployees) =>
                     prevEmployees.map((emp) => (emp.emp_id === empId ? { ...emp, is_active: newStatus } : emp))
                 );
@@ -66,11 +76,13 @@ export default function ShopEmployeesTable({ shopId }) {
             } catch (err) {
                 console.error('Error updating employee status:', err);
                 toast.error(err.response?.data?.error || `Failed to update ${empName}'s status.`);
+                // If update fails, re-fetch to revert optimistic update or show accurate state
+                fetchEmployees();
             } finally {
                 setActionStatus((prev) => ({ ...prev, [empId]: { loading: false } }));
             }
         },
-        []
+        [fetchEmployees] // Add fetchEmployees to dependency array
     );
 
     // Handler to delete an employee
@@ -99,10 +111,10 @@ export default function ShopEmployeesTable({ shopId }) {
             setActionStatus((prev) => ({ ...prev, [emp_id]: { loading: false } }));
             setEmployeeToDelete(null);
         }
-    }, [employeeToDelete, shopId]);
+    }, [employeeToDelete, shopId, fetchEmployees]); // Add fetchEmployees to dependency array
 
     // Handle initial loading state
-    if (loading) {
+    if (loadingInitial) {
         return (
             <div className="flex justify-center items-center py-8">
                 <svg className="animate-spin h-8 w-8 text-[#cb3a1e]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
