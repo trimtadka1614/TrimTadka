@@ -72,7 +72,16 @@ body {
   background-color: #a52c17;
 }
 
-.header-blur {
-  backdrop-filter: blur(10px); /* main blur effect */
-  -webkit-backdrop-filter: blur(10px); /* for Safari support */
+.custom-toast {
+  height: 85px;             /* increased notification height */
+  font-size: 12px;               /* bigger font */
+  font-family: 'Poppins';
+  text-transform: uppercase;     /* make all text uppercase */
+  letter-spacing: 1.5px;         /* wider spacing */
+}
+
+/* Customize the progress bar */
+.custom-progress {
+  background: green !important;
+  height: 4px !important;        /* increased thickness of progress bar */
 }
