@@ -1216,6 +1216,88 @@ app.get('/services', async (req, res) => {
     }
 });
 
+
+app.delete('/delete_employee/:shop_id/:emp_id', async (req, res) => {
+    // Extract parameters from the request URL
+    const { shop_id, emp_id } = req.params;
+
+    // --- Input Validation ---
+    // Validate shop_id
+    if (!shop_id || !Number.isInteger(Number(shop_id)) || Number(shop_id) <= 0) {
+        return res.status(400).json({
+            error: 'Invalid shop_id. It must be a positive integer.'
+        });
+    }
+
+    // Validate emp_id
+    if (!emp_id || !Number.isInteger(Number(emp_id)) || Number(emp_id) <= 0) {
+        return res.status(400).json({
+            error: 'Invalid emp_id. It must be a positive integer.'
+        });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // --- Step 1: Verify employee existence and ownership ---
+        // This query checks if the employee with emp_id exists and belongs to the provided shop_id.
+        const employeeCheck = await client.query(
+            `SELECT emp_id FROM employees WHERE emp_id = $1 AND shop_id = $2`,
+            [emp_id, shop_id]
+        );
+
+        if (employeeCheck.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                error: `Employee with ID ${emp_id} not found in shop with ID ${shop_id}.`
+            });
+        }
+        
+        // --- Step 2: Delete associated services (optional, but good practice) ---
+        // If your database has ON DELETE CASCADE on the foreign key, this step is redundant.
+        // However, explicitly deleting related records ensures the data is clean regardless of the schema.
+        await client.query(
+            `DELETE FROM employee_services WHERE emp_id = $1`,
+            [emp_id]
+        );
+
+        // --- Step 3: Delete the employee from the employees table ---
+        const deleteResult = await client.query(
+            `DELETE FROM employees WHERE emp_id = $1 AND shop_id = $2`,
+            [emp_id, shop_id]
+        );
+        
+        if (deleteResult.rowCount === 0) {
+            // This should not happen if the employeeCheck passed, but it's a good final safeguard.
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                error: `Employee with ID ${emp_id} was not deleted.`
+            });
+        }
+        
+        // --- Step 4: Commit the transaction if all operations were successful ---
+        await client.query('COMMIT');
+        
+        // --- Step 5: Send a success response ---
+        res.status(200).json({
+            message: `Employee with ID ${emp_id} has been successfully deleted.`
+        });
+
+    } catch (err) {
+        // --- Rollback the transaction on any error ---
+        await client.query('ROLLBACK');
+        
+        console.error('Error deleting employee:', err);
+        res.status(500).json({
+            error: 'Server error while deleting employee.'
+        });
+    } finally {
+        // Always release the client back to the pool
+        client.release();
+    }
+});
+
 // Register an employee (barber) and assign services
 app.post('/register_employee', async (req, res) => {
     const { shop_id, emp_name, ph_number, service_ids } = req.body;
