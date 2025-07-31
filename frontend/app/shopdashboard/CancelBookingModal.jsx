@@ -3,25 +3,21 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { XCircleIcon, CheckCircle2Icon, LoaderIcon } from 'lucide-react';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
 export default function CancelBookingModal({ bookingId, shopId, onCancellationSuccess }) {
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [success, setSuccess] = useState(null);
 
     const handleCancelClick = () => {
-        setError(null);
-        setSuccess(null);
         setShowModal(true);
     };
 
     const confirmCancellation = async () => {
         setLoading(true);
-        setError(null);
-        setSuccess(null);
 
         try {
             const response = await axios.post(`${API_BASE_URL}/shop/bookings/cancel`, {
@@ -29,14 +25,14 @@ export default function CancelBookingModal({ bookingId, shopId, onCancellationSu
                 shop_id: shopId,
             });
 
-            setSuccess(response.data.message || 'Booking cancelled successfully!');
+            toast.success(response.data.message || 'Booking cancelled successfully!');
             if (onCancellationSuccess) {
                 onCancellationSuccess(bookingId);
             }
             setTimeout(() => setShowModal(false), 2000);
         } catch (err) {
             console.error('Error cancelling booking:', err);
-            setError(err.response?.data?.error || 'Failed to cancel booking. Please try again.');
+            toast.error(err.response?.data?.error || 'Failed to cancel booking. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -44,6 +40,21 @@ export default function CancelBookingModal({ bookingId, shopId, onCancellationSu
 
     return (
         <>
+            {/* Toast Container for notifications */}
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+                toastClassName="custom-toast"
+                progressClassName="custom-progress"
+            />
             {/* SMALL Cancel Button */}
             <button
                 onClick={handleCancelClick}
@@ -77,22 +88,6 @@ export default function CancelBookingModal({ bookingId, shopId, onCancellationSu
                         <p className="text-gray-700 mb-6">
                             Are you sure you want to cancel this booking (ID: <span className="font-bold">{bookingId}</span>)? This action cannot be undone.
                         </p>
-
-                        {/* Error */}
-                        {error && (
-                            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded-lg mb-4 uppercase">
-                                <strong className="font-bold">Error:</strong>
-                                <span className="ml-2">{error}</span>
-                            </div>
-                        )}
-
-                        {/* Success */}
-                        {success && (
-                            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-2 rounded-lg mb-4 uppercase">
-                                <strong className="font-bold">Success:</strong>
-                                <span className="ml-2">{success}</span>
-                            </div>
-                        )}
 
                         {/* Action Buttons */}
                         <div className="flex justify-end space-x-3">
