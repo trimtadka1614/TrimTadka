@@ -41,20 +41,6 @@ export default function CancelBookingModal({ bookingId, shopId, onCancellationSu
     return (
         <>
             {/* Toast Container for notifications */}
-            <ToastContainer
-                position="top-right"
-                autoClose={3000}
-                hideProgressBar={false}
-                newestOnTop={false}
-                closeOnClick
-                rtl={false}
-                pauseOnFocusLoss
-                draggable
-                pauseOnHover
-                theme="light"
-                toastClassName="custom-toast"
-                progressClassName="custom-progress"
-            />
             {/* SMALL Cancel Button */}
             <button
                 onClick={handleCancelClick}
