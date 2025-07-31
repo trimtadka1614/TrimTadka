@@ -92,20 +92,6 @@ export default function ShopEmployeesTable({ shopId }) {
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-           <ToastContainer
-                position="top-right"
-                autoClose={3000}
-                hideProgressBar={false}
-                newestOnTop={false}
-                closeOnClick
-                rtl={false}
-                pauseOnFocusLoss
-                draggable
-                pauseOnHover
-                theme="light"
-                toastClassName="custom-toast"
-                progressClassName="custom-progress"
-            />
             <h3 className="text-xl font-bold text-[#cb3a1e] mb-4 flex items-center">
                 <UserIcon className="h-6 w-6 mr-2" /> Your Stylists
             </h3>
