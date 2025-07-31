@@ -302,18 +302,6 @@ function BookingModal({
     const isCurrentlySelected = selectedServiceIds.includes(serviceId);
     
     handleServiceChange(serviceId);
-    
-    // Optional: Show toast for service selection/deselection
-    if (!isCurrentlySelected && service) {
-      toast.info(`${service.service_name} added to your booking`, {
-        position: "bottom-right",
-        autoClose: 2000,
-        hideProgressBar: true,
-        closeOnClick: true,
-        pauseOnHover: false,
-        draggable: true,
-      });
-    }
   };
 
   return (
