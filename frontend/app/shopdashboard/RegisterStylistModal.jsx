@@ -77,20 +77,6 @@ export default function RegisterStylistModal({ shopId, isOpen, onClose, onStylis
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 animate-fade-in uppercase tracking-wider ">
-            <ToastContainer
-                position="top-right"
-                autoClose={3000}
-                hideProgressBar={false}
-                newestOnTop={false}
-                closeOnClick
-                rtl={false}
-                pauseOnFocusLoss
-                draggable
-                pauseOnHover
-                theme="light"
-                toastClassName="custom-toast"
-                progressClassName="custom-progress"
-            />
             <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4 animate-scale-up border border-[#cb3a1e]">
                 <div className="flex justify-between items-center border-b pb-3 mb-4">
                     <h2 className="text-xl font-bold text-[#cb3a1e] flex items-center">
