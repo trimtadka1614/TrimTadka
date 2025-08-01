@@ -873,7 +873,7 @@ app.get('/shops/simple', async (req, res) => {
                     };
                     
                     // Ensure haversine function is available (e.g., imported or defined elsewhere)
-                    const distance = haversine(userLocation, shopLocation);
+                    const distance = ((haversine(userLocation, shopLocation))*1.3);
                     shop.location.distance_from_you = `${(distance / 1000).toFixed(1)} km`;
                 } else {
                     shop.location.distance_from_you = "Distance unavailable";
