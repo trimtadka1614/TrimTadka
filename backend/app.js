@@ -916,18 +916,15 @@ app.get('/shops/simple', async (req, res) => {
 // const haversine = require('haversine'); // You'd need to implement or import this function
 
 app.post('/shop_status', async (req, res) => {
-    const { customer_id, lat, long, shop_id } = req.body; // shop_id now comes from body
+    const { customer_id, lat, long, shop_id } = req.body;
+    const TOMTOM_API_KEY = '5Q9lucwONUWC0yrXWheR16oZtjdBxE0H'; // Replace with your actual API key
 
     try {
-        // Validate shop_id as it's now a primary filter for this route
         if (!shop_id || !Number.isInteger(parseInt(shop_id))) {
             return res.status(400).json({ error: 'shop_id is required and must be a positive integer in the request body.' });
         }
         const parsedShopId = parseInt(shop_id);
 
-        // Base query to get shops with barbers and their services
-        // IMPORTANT: Removed is_active filters from WHERE and JOIN clauses
-        // to retrieve both active and inactive shops/employees.
         let shopsQuery = `
             SELECT 
                 s.shop_id,
@@ -936,10 +933,10 @@ app.post('/shop_status', async (req, res) => {
                 s.long,
                 s.address,
                 s.ph_number,
-                s.is_active AS shop_is_active, -- Include shop's active status
+                s.is_active AS shop_is_active,
                 e.emp_id,
                 e.emp_name,
-                e.is_active AS emp_is_active, -- Include employee's active status
+                e.is_active AS emp_is_active,
                 COALESCE(
                     json_agg(
                         CASE 
@@ -955,22 +952,21 @@ app.post('/shop_status', async (req, res) => {
                     '[]'::json
                 ) as services
             FROM shops s
-            LEFT JOIN employees e ON s.shop_id = e.shop_id -- Removed e.is_active filter here
+            LEFT JOIN employees e ON s.shop_id = e.shop_id
             LEFT JOIN employee_services es ON e.emp_id = es.emp_id
             LEFT JOIN services srv ON es.service_id = srv.service_id
-            WHERE s.shop_id = $1 -- Removed s.is_active filter here, only filter by shop_id
+            WHERE s.shop_id = $1
             GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, e.emp_id, e.emp_name, e.is_active
             ORDER BY s.shop_name, e.emp_name
         `;
 
-        const shopsResult = await pool.query(shopsQuery, [parsedShopId]); // Pass shop_id as parameter
+        const shopsResult = await pool.query(shopsQuery, [parsedShopId]);
 
         if (shopsResult.rows.length === 0) {
             return res.status(404).json({ message: 'Shop not found.' });
         }
         
-        // Get current and future bookings for queue calculation for the specific shop
-        const currentTime = dayjs().utc().toDate(); // Use UTC current time for comparison with DB
+        const currentTime = dayjs().utc().toDate();
         const bookingsQuery = `
             SELECT 
                 b.booking_id,
@@ -986,15 +982,14 @@ app.post('/shop_status', async (req, res) => {
             FROM bookings b
             JOIN customers c ON b.customer_id = c.customer_id
             WHERE b.status IN ('booked', 'in_service')
-            AND b.shop_id = $1 -- Filter bookings by shop_id
-            AND b.end_time > $2 -- Consider all active bookings whose end time is in the future
+            AND b.shop_id = $1
+            AND b.end_time > $2
             ORDER BY b.join_time ASC
         `;
         
-        const bookingsResult = await pool.query(bookingsQuery, [parsedShopId, currentTime]); // Pass shop_id and currentTime
+        const bookingsResult = await pool.query(bookingsQuery, [parsedShopId, currentTime]);
         const bookings = bookingsResult.rows;
 
-        // Group shops data (will only be one shop due to shop_id filter)
         const shopsMap = new Map();
         
         shopsResult.rows.forEach(row => {
@@ -1003,7 +998,7 @@ app.post('/shop_status', async (req, res) => {
                     shop_id: row.shop_id,
                     shop_name: row.shop_name,
                     ph_number: row.ph_number,
-                    is_active: row.shop_is_active, // Include shop's active status
+                    is_active: row.shop_is_active,
                     location: {
                         address: row.address,
                         coordinates: {
@@ -1017,40 +1012,33 @@ app.post('/shop_status', async (req, res) => {
             
             const shop = shopsMap.get(row.shop_id);
             
-            // Add barber if exists and not already added
             if (row.emp_id && !shop.barbers.some(b => b.emp_id === row.emp_id)) {
                 const empBookings = bookings.filter(b => b.emp_id === row.emp_id);
                 
-                // Calculate queue info
-                const totalInQueue = empBookings.length; 
+                const totalInQueue = empBookings.length;
                 const inServiceBooking = empBookings.find(b => b.status === 'in_service');
                 
-                // Calculate estimated wait time
                 let finalEstimatedWaitTime = 0;
-                let lastBookingEndTime = currentTime; // Start with current time as the reference point for calculating next available slot
+                let lastBookingEndTime = currentTime;
 
-                // Sort all active bookings by join_time to process them sequentially
                 const sortedActiveBookings = empBookings
-                    .sort((a, b) => dayjs.utc(a.join_time).toDate().getTime() - dayjs.utc(b.join_time).toDate().getTime()); // Parse as UTC
+                    .sort((a, b) => dayjs.utc(a.join_time).toDate().getTime() - dayjs.utc(b.join_time).toDate().getTime());
 
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
-                    const bookingJoinTime = dayjs.utc(booking.join_time).toDate(); // Parse as UTC
-                    const bookingEndTime = dayjs.utc(booking.end_time).toDate(); // Parse as UTC
+                    const bookingJoinTime = dayjs.utc(booking.join_time).toDate();
+                    const bookingEndTime = dayjs.utc(booking.end_time).toDate();
 
                     if (booking.status === 'in_service') {
-                        lastBookingEndTime = new Date(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000)); // Add 5 min buffer
+                        lastBookingEndTime = new Date(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000));
                     } else if (booking.status === 'booked') {
-                        const potentialStartTimeAfterPrevious = new Date(lastBookingEndTime.getTime()); 
+                        const potentialStartTimeAfterPrevious = new Date(lastBookingEndTime.getTime());
                         const actualStartTimeForThisBooking = new Date(Math.max(bookingJoinTime.getTime(), potentialStartTimeAfterPrevious.getTime()));
-                        
-                        lastBookingEndTime = new Date(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000); // Add 5 min buffer
+                        lastBookingEndTime = new Date(actualStartTimeForThisBooking.getTime() + (booking.service_duration_minutes || 0) * 60000 + 5 * 60000);
                     }
                 }
-
                 finalEstimatedWaitTime = Math.max(0, Math.ceil((lastBookingEndTime.getTime() - currentTime.getTime()) / (1000 * 60)));
 
-                // Find customer's booking if customer_id is provided
                 let customerBooking = null;
                 let customerQueuePosition = null;
                 
@@ -1062,29 +1050,27 @@ app.post('/shop_status', async (req, res) => {
                     if (customerBooking) {
                         customerQueuePosition = sortedActiveBookings.findIndex(b => 
                             b.booking_id === customerBooking.booking_id
-                        ) + 1; // +1 because array indices are 0-based
+                        ) + 1;
                     }
                 }
 
                 const barber = {
                     emp_id: row.emp_id,
                     emp_name: row.emp_name,
-                    is_active: row.emp_is_active, // Include employee's active status
+                    is_active: row.emp_is_active,
                     services: Array.isArray(row.services) ? row.services : [],
                     queue_info: {
                         total_people_in_queue: totalInQueue,
-                        queue_position: totalInQueue + 1, // Position in the overall active queue for new bookings
+                        queue_position: totalInQueue + 1,
                         estimated_wait_time: finalEstimatedWaitTime > 0 ? `${finalEstimatedWaitTime} mins` : "No wait",
                         current_status: inServiceBooking ? 
                             `Serving ${inServiceBooking.customer_name}` : 
                             (totalInQueue > 0 ? "Ready for next customer" : "Available"),
-                        ...(customerQueuePosition !== null && { customer_queue_position: customerQueuePosition }) // Conditionally add customer's specific queue position
+                        ...(customerQueuePosition !== null && { customer_queue_position: customerQueuePosition })
                     }
                 };
 
-                // Add customer's booking info if exists
                 if (customerBooking) {
-                    // Treat fetched times as UTC and convert to IST for display
                     const joinTimeIST = dayjs.utc(customerBooking.join_time).tz('Asia/Kolkata');
                     const endTimeIST = dayjs.utc(customerBooking.end_time).tz('Asia/Kolkata');
                     
@@ -1097,33 +1083,44 @@ app.post('/shop_status', async (req, res) => {
                         services: customerBooking.service_type
                     };
                 }
-
                 shop.barbers.push(barber);
             }
         });
 
-        // Convert map to array and calculate distances if coordinates provided
         const shops = Array.from(shopsMap.values());
         
         if (lat && long) {
-            const userLocation = { latitude: parseFloat(lat), longitude: parseFloat(long) };
-            
-            shops.forEach(shop => {
-                if (shop.location.coordinates.lat && shop.location.coordinates.long) {
-                    const shopLocation = {
-                        latitude: shop.location.coordinates.lat,
-                        longitude: shop.location.coordinates.long
-                    };
+            const userLat = parseFloat(lat);
+            const userLong = parseFloat(long);
+
+            const distancePromises = shops.map(async shop => {
+                const shopLat = shop.location.coordinates.lat;
+                const shopLong = shop.location.coordinates.long;
+
+                if (shopLat && shopLong) {
+                    const url = `https://api.tomtom.com/routing/1/calculateRoute/${userLat},${userLong}:${shopLat},${shopLong}/json?key=${TOMTOM_API_KEY}&routeType=fastest&travelMode=car&traffic=true`;
                     
-                    // Ensure haversine function is available (e.g., imported or defined elsewhere)
-                    const distance = haversine(userLocation, shopLocation);
-                    shop.location.distance_from_you = `${(distance / 1000).toFixed(1)} km`;
+                    try {
+                        const response = await axios.get(url);
+                        const data = response.data;
+                        const route = data.routes[0];
+                        if (route) {
+                            const distanceInMeters = route.summary.lengthInMeters;
+                            shop.location.distance_from_you = `${(distanceInMeters / 1000).toFixed(1)} km`;
+                        } else {
+                            shop.location.distance_from_you = "Distance unavailable";
+                        }
+                    } catch (apiError) {
+                        console.error(`Error fetching TomTom data for shop ${shop.shop_id}:`, apiError.message);
+                        shop.location.distance_from_you = "Distance unavailable";
+                    }
                 } else {
                     shop.location.distance_from_you = "Distance unavailable";
                 }
             });
+
+            await Promise.all(distancePromises);
             
-            // Sort by distance (if haversine is implemented)
             shops.sort((a, b) => {
                 const distA = parseFloat(a.location.distance_from_you) || Infinity;
                 const distB = parseFloat(b.location.distance_from_you) || Infinity;
@@ -1136,7 +1133,7 @@ app.post('/shop_status', async (req, res) => {
             shops: shops,
             total_shops: shops.length,
             user_location_provided: !!(lat && long),
-            timestamp: dayjs().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss [IST]') // Formatted in IST
+            timestamp: dayjs().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss [IST]')
         });
 
     } catch (error) {
@@ -1147,7 +1144,6 @@ app.post('/shop_status', async (req, res) => {
         });
     }
 });
-
 // Register a service (for barber shops)
 app.post('/register_service', async (req, res) => {
     const { service_name, service_duration_minutes } = req.body;
