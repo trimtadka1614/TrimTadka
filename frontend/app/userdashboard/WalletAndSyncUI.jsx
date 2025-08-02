@@ -132,7 +132,7 @@ const WalletAndSyncUI = ({ customerId }) => {
 //  Withdrawal Modal Component (Refactored to be self-contained)
 // =============================================================
 const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess }) => {
-  const API_BASE_URL = 'http://localhost:5000';
+  const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
   const [upiId, setUpiId] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const upiInputRef = useRef(null);
@@ -273,7 +273,7 @@ const WalletModal = ({ customerId, onClose, onWalletUpdate, hasSyncedOnce, setHa
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [hasPendingWithdrawal, setHasPendingWithdrawal] = useState(false);
   
-  const API_BASE_URL = 'http://localhost:5000';
+  const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
   const TRANSACTIONS_PER_PAGE = 5;
   
   // New helper function to only fetch wallet data without syncing
