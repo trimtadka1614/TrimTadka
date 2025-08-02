@@ -8,6 +8,9 @@ const dayjs = require('dayjs'); // For easy time manipulation
 const utc = require('dayjs/plugin/utc'); // Import UTC plugin
 const timezone = require('dayjs/plugin/timezone'); // Import Timezone plugin
 require('dotenv').config(); // Load environment variables from .env file
+const cors = require('cors'); // Import the CORS middleware
+const Razorpay = require('razorpay');
+const axios = require('axios');
 
 // Extend Day.js with UTC and Timezone plugins
 dayjs.extend(utc);
@@ -19,8 +22,14 @@ dayjs.tz.setDefault('Asia/Kolkata');
 
 // Initialize Express app
 const app = express();
-const port = process.env.PORT || 3000; // Use port from environment variable or default to 3000
 
+const port = process.env.PORT || 5000; // Use port from environment variable or default to 3000
+
+// Ensure you are loading these from your environment variables
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 // CORS middleware to allow requests from Hoppscotch web
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
@@ -33,7 +42,7 @@ app.use((req, res, next) => {
     }
     next();
 });
-
+app.use(cors());
 // Middleware to parse JSON request bodies
 app.use(express.json());
 
@@ -1642,13 +1651,453 @@ setInterval(updateBookingStatuses, 60000); // Run every 60 seconds
 // Book a service - Create a new booking with automatic timing
 // Book a service - Create a new booking with automatic timing
 // Book a service - Create a new booking with automatic timing
+
+
+
+app.post('/create-razorpay-order', async (req, res) => {
+    try {
+        const { amount } = req.body;
+        const options = {
+            amount: amount, // Amount is in currency subunits (e.g., 300 for ₹3)
+            currency: 'INR',
+            receipt: 'receipt_order_' + Math.random().toString(36).substring(7),
+        };
+
+        const order = await razorpay.orders.create(options);
+        console.log("Razorpay Order Created:", order);
+        res.status(200).json(order);
+    } catch (error) {
+        console.error('Error creating Razorpay order:', error);
+        res.status(500).json({ error: 'Failed to create Razorpay order' });
+    }
+});
+
+app.put('/customers/:customer_id/sync-completed-bookings', async (req, res) => {
+  const { customer_id } = req.params;
+
+  if (!customer_id || isNaN(parseInt(customer_id))) {
+    return res.status(400).json({ error: 'Valid customer_id is required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Count the number of completed bookings for the customer
+    const countResult = await client.query(
+      `SELECT COUNT(*) FROM bookings WHERE customer_id = $1 AND status = 'completed'`,
+      [customer_id]
+    );
+    const completedBookingsCount = parseInt(countResult.rows[0].count);
+
+    // 2. Update the customer's record with the new count
+    const updateCustomerQuery = `
+      UPDATE customers
+      SET bookings_completed = $1
+      WHERE customer_id = $2
+      RETURNING *;
+    `;
+    const updateResult = await client.query(updateCustomerQuery, [completedBookingsCount, customer_id]);
+
+    if (updateResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    await client.query('COMMIT');
+
+    res.status(200).json({
+      message: `Bookings completed count for customer ID ${customer_id} updated to ${completedBookingsCount}`,
+      customer: updateResult.rows[0],
+    });
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to sync completed bookings count:', err.message);
+    res.status(500).json({
+      error: 'Failed to sync completed bookings count',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  } finally {
+    client.release();
+  }
+});
+
+
+app.get('/customers/:customer_id/wallet', async (req, res) => {
+  const { customer_id } = req.params;
+
+  if (!customer_id || isNaN(parseInt(customer_id))) {
+    return res.status(400).json({ error: 'Valid customer_id is required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    // Fetch the balance from the transaction with the largest ID
+    const balanceResult = await client.query(
+      `SELECT balance FROM wallet_transactions WHERE customer_id = $1 ORDER BY id DESC LIMIT 1`,
+      [customer_id]
+    );
+    const currentBalance = balanceResult.rows.length > 0 ? balanceResult.rows[0].balance : 0;
+
+    // Fetch all transactions for the customer, ordered by time
+    const transactionsResult = await client.query(
+      `SELECT * FROM wallet_transactions WHERE customer_id = $1 ORDER BY created_at DESC`,
+      [customer_id]
+    );
+
+    res.status(200).json({
+      message: `Wallet details for customer ID ${customer_id} retrieved successfully`,
+      wallet: {
+        customer_id: parseInt(customer_id),
+        current_balance: parseFloat(currentBalance),
+        transactions: transactionsResult.rows,
+      },
+    });
+  } catch (err) {
+    console.error('Error fetching wallet details:', err.message);
+    res.status(500).json({
+      error: 'Failed to fetch wallet details',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  } finally {
+    client.release();
+  }
+});
+
+
+app.post('/api/check-cashback', async (req, res) => {
+    const { customer_id } = req.body;
+
+    // 1. Validate the customer ID
+    if (!customer_id || isNaN(parseInt(customer_id))) {
+        return res.status(400).json({ error: 'A valid customer_id is required in the request body.' });
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 2. Fetch customer data. Use FOR UPDATE to lock the row and prevent race conditions.
+        const customerResult = await client.query(
+            `SELECT customer_id, bookings_completed, wallet_id FROM customers WHERE customer_id = $1 FOR UPDATE`,
+            [customer_id]
+        );
+
+        const customer = customerResult.rows[0];
+
+        // 3. Check if the customer exists
+        if (!customer) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: `Customer with ID ${customer_id} not found.` });
+        }
+        
+        // 4. CHECK IF THE CASHBACK CONDITION IS MET.
+        // The condition is that bookings_completed is exactly 2.
+        if (customer.bookings_completed !== 2) {
+            await client.query('COMMIT');
+            return res.status(200).json({
+                message: `Bookings completed is not 2. No cashback awarded.`,
+                customer_data: customer,
+            });
+        }
+        
+        // 5. ATOMICITY FIX: Check one more time inside the transaction block to ensure no other request has already added cashback.
+        // This is the key change that prevents duplicate entries.
+        const existingCashbackResult = await client.query(
+            `SELECT id FROM wallet_transactions WHERE customer_id = $1 AND type = 'cashback' AND status = 'Received' LIMIT 1`,
+            [customer_id]
+        );
+        const cashbackAlreadyAwarded = existingCashbackResult.rows.length > 0;
+        
+        if (cashbackAlreadyAwarded) {
+            await client.query('COMMIT');
+            return res.status(200).json({
+                message: 'Cashback has already been awarded to this customer.',
+                customer_data: customer,
+            });
+        }
+        
+        // If we reach this point, the conditions are met and no cashback has been awarded.
+        const cashbackAmount = 15;
+        console.log(`Customer ${customer_id} is eligible for a ₹${cashbackAmount} cashback.`);
+
+        try {
+            // 6. Fetch the customer's last wallet balance to calculate the new balance.
+            const balanceResult = await client.query(
+                `SELECT balance FROM wallet_transactions WHERE customer_id = $1 ORDER BY id DESC LIMIT 1`,
+                [customer_id]
+            );
+            
+            const lastBalance = balanceResult.rows[0] ? parseFloat(balanceResult.rows[0].balance) : 0;
+            const newBalance = lastBalance + cashbackAmount;
+
+            // 7. Insert the 'Received' cashback transaction into the wallet_transactions table.
+            await client.query(
+                `INSERT INTO wallet_transactions (customer_id, wallet_id, booking_id, amount, type, status, balance, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                [customer.customer_id, customer.wallet_id, null, cashbackAmount, 'cashback', 'Received', newBalance, new Date()]
+            );
+            
+            await client.query('COMMIT');
+
+            console.log(`Cashback of ₹${cashbackAmount} successfully awarded and added to wallet for customer ${customer_id}.`);
+            
+            return res.status(200).json({
+                message: 'Cashback has been awarded successfully and is now available in the customer\'s e-wallet.',
+                customer_data: customer,
+                showCashbackPopup: true,
+            });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error('Error during cashback award process:', error);
+            return res.status(500).json({ 
+                error: 'Failed to process cashback award.', 
+                details: error.message 
+            });
+        }
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Database query error:', err.message);
+        res.status(500).json({
+            error: 'Failed to process cashback due to a database error.',
+            details: err.message
+        });
+    } finally {
+        client.release();
+    }
+});
+
+
+// --- API Route for Withdrawal ---
+// This route is called when the user explicitly requests to withdraw their cashback.
+app.post('/api/withdraw-cashback', async (req, res) => {
+    const { customer_id, upi_id } = req.body;
+    const withdrawalAmount = 15; // Set your fixed withdrawal amount here
+
+    // 1. Validate the incoming request data.
+    if (!customer_id || isNaN(parseInt(customer_id)) || !upi_id) {
+        return res.status(400).json({ error: 'A valid customer_id and upi_id are required.' });
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 2. Fetch the customer's data and their current wallet balance.
+        // We need the latest balance to perform a check.
+        const customerResult = await client.query(
+            `SELECT customer_id, wallet_id FROM customers WHERE customer_id = $1`,
+            [customer_id]
+        );
+
+        const balanceResult = await client.query(
+            `SELECT balance FROM wallet_transactions WHERE customer_id = $1 ORDER BY id DESC LIMIT 1`,
+            [customer_id]
+        );
+
+        const customer = customerResult.rows[0];
+        const currentBalance = balanceResult.rows[0] ? parseFloat(balanceResult.rows[0].balance) : 0;
+
+        // Check if the customer exists.
+        if (!customer) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Customer not found.' });
+        }
+
+        // 3. Check if the customer has enough balance to make a withdrawal request.
+        if (currentBalance < withdrawalAmount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: `Insufficient balance for withdrawal. Current balance: ₹${currentBalance}.` });
+        }
+        
+        // 4. Insert a new row for the withdrawal request.
+        // The balance remains the same (currentBalance) because the amount
+        // has not actually been paid out yet.
+        await client.query(
+            `INSERT INTO wallet_transactions (customer_id, wallet_id, booking_id, amount, type, status, balance, upi_id, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+            [customer_id, customer.wallet_id, null, withdrawalAmount, 'cashback', 'Requested', currentBalance, upi_id]
+        );
+
+        await client.query('COMMIT');
+        
+        // 5. Send a success response.
+        return res.status(200).json({
+            message: 'Cashback withdrawal request has been submitted successfully.',
+            withdrawal_amount: withdrawalAmount,
+            current_balance: currentBalance,
+            status: 'Requested'
+        });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Database error message:', err.message);
+        res.status(500).json({
+            error: 'Failed to process withdrawal due to a database error.',
+            details: err.message
+        });
+    } finally {
+        // Ensure the database client is always released.
+        client.release();
+    }
+});
+
+
+// --- NEW ADMIN ROUTES ---
+
+/**
+ * @route GET /admin/wallet-transactions
+ * @desc Admin route to fetch all wallet transactions across all customers.
+ * @access Admin only (you should implement authentication/authorization)
+ */
+app.get('/admin/wallet-transactions', async (req, res) => {
+  try {
+    const query = `
+      SELECT
+        wt.id,
+        wt.customer_id,
+        wt.amount,
+        wt.type,
+        wt.status,
+        wt.upi_id,
+        wt.created_at,
+        c.customer_name AS customer_name,
+        c.customer_ph_number AS customer_ph_number
+      FROM wallet_transactions wt
+      JOIN customers c ON wt.customer_id = c.customer_id
+      ORDER BY wt.created_at DESC;
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching all wallet transactions:', err);
+    res.status(500).json({ error: 'Failed to fetch transactions.' });
+  }
+});
+
+/**
+ * @route GET /admin/pay-withdrawal/:transactionId
+ * @desc Admin route to fetch UPI payment details for a 'Requested' withdrawal.
+ * This route is called when the admin clicks 'PAY'. It does NOT update the DB.
+ * @access Admin only (you should implement authentication/authorization)
+ */
+app.get('/admin/pay-withdrawal/:transactionId', async (req, res) => {
+  const { transactionId } = req.params;
+
+  try {
+    // 1. Fetch the transaction to verify its status and get customer/amount details.
+    const transactionResult = await pool.query(
+      `SELECT customer_id, amount, upi_id FROM wallet_transactions WHERE id = $1 AND status = 'Requested';`,
+      [transactionId]
+    );
+
+    if (transactionResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found or not in a "Requested" state.' });
+    }
+
+    const { customer_id, amount, upi_id } = transactionResult.rows[0];
+
+    // 2. Generate and return a UPI payment link for the admin to use.
+    const upiLink = `upi://pay?pa=${upi_id}&pn=Cashback%20Withdrawal&am=${amount.toFixed(2)}&cu=INR`;
+
+    res.status(200).json({
+      message: 'UPI link generated successfully.',
+      upiLink,
+      customerId: customer_id,
+      amount,
+    });
+  } catch (err) {
+    console.error('Error fetching withdrawal details:', err);
+    res.status(500).json({ error: 'An error occurred while fetching withdrawal details.' });
+  }
+});
+
+
+/**
+ * @route PUT /admin/confirm-withdrawal/:transactionId
+ * @desc Admin route to confirm a payment and mark a transaction as 'Withdrawn'.
+ * This is called when the admin clicks 'SAVE' after completing the payment.
+ * @access Admin only (you should implement authentication/authorization)
+ */
+// This is the backend code that your React app calls.
+app.put('/admin/confirm-withdrawal/:transactionId', async (req, res) => {
+    const { transactionId } = req.params;
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN'); // Start a database transaction
+
+        // 1. Fetch the transaction to verify its status and get customer details for the notification
+        const transactionQuery = `
+            SELECT customer_id, amount, status
+            FROM wallet_transactions
+            WHERE id = $1;
+        `;
+        const transactionResult = await client.query(transactionQuery, [transactionId]);
+
+        if (transactionResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Transaction not found.' });
+        }
+
+        const transaction = transactionResult.rows[0];
+
+        // 2. Check if the transaction is still in a 'Requested' state
+        if (transaction.status !== 'Requested') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Transaction has already been processed.' });
+        }
+
+        // 3. Update the existing transaction row as requested
+        const updateTransactionQuery = `
+            UPDATE wallet_transactions
+            SET status = 'Withdrawn', balance = 0, type = 'withdrawal'
+            WHERE id = $1;
+        `;
+        await client.query(updateTransactionQuery, [transactionId]);
+
+        await client.query('COMMIT'); // Commit the transaction if all queries succeed
+        
+        // 4. Send push notification to the customer
+        try {
+            const payload = {
+                title: 'Withdrawal Confirmed!',
+                body: `Cashback of ₹${parseFloat(transaction.amount).toFixed(2)} has been successfully withdrawn. Your new balance is ₹0.00.`,
+            };
+            await sendNotificationToCustomer(transaction.customer_id, payload);
+        } catch (notificationError) {
+            console.error('Error sending push notification:', notificationError);
+            // We log the error but do not roll back the transaction.
+        }
+
+        // 5. Respond to the client with a success message
+        res.status(200).json({
+            message: 'Withdrawal successfully confirmed and customer wallet updated.',
+        });
+
+    } catch (err) {
+        await client.query('ROLLBACK'); // Roll back on any error
+        console.error('Error confirming withdrawal:', err);
+        res.status(500).json({ error: 'An error occurred while confirming the withdrawal.' });
+    } finally {
+        client.release();
+    }
+});
+
+
+
+
 app.post('/bookings', async (req, res) => {
-    const { shop_id, emp_id, customer_id, service_ids } = req.body;
+    // MODIFIED: Added booking_fee_paid to the request body
+    const { shop_id, emp_id, customer_id, service_ids, booking_fee_paid } = req.body;
 
     // --- (UNCHANGED VALIDATION & INITIAL SETUP) ---
     if (!shop_id || !emp_id || !Array.isArray(service_ids) || service_ids.length === 0) {
         return res.status(400).json({
-            error: 'Missing required fields: shop_id, emp_id, service_ids[] (customer_id can be 0)'
+            error: 'Missing required fields: shop_id, emp_id, service_ids[]'
         });
     }
     if (!Number.isInteger(shop_id) || shop_id <= 0) {
@@ -1657,9 +2106,12 @@ app.post('/bookings', async (req, res) => {
     if (!Number.isInteger(emp_id) || emp_id <= 0) {
         return res.status(400).json({ error: 'emp_id must be a positive integer' });
     }
-    // MODIFIED: Allow customer_id to be 0
     if (!Number.isInteger(customer_id) || customer_id < 0) {
         return res.status(400).json({ error: 'customer_id must be a non-negative integer (0 allowed for no specific customer)' });
+    }
+    // MODIFIED: Added validation for the booking fee payment status
+    if (customer_id > 0 && typeof booking_fee_paid !== 'boolean') {
+        return res.status(400).json({ error: 'booking_fee_paid must be a boolean for registered customers' });
     }
     const invalidServiceIds = service_ids.filter(id => !Number.isInteger(id) || id <= 0);
     if (invalidServiceIds.length > 0) {
@@ -1669,9 +2121,9 @@ app.post('/bookings', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await updateBookingStatuses(client); // Ensure statuses are fresh [cite: 210]
+        await updateBookingStatuses(client);
 
-        const currentTime = dayjs().utc().toDate(); // Current time in UTC when the request is received [cite: 211]
+        const currentTime = dayjs().utc().toDate();
 
         const shopCheck = await client.query('SELECT shop_id, shop_name FROM shops WHERE shop_id = $1 AND is_active = TRUE', [shop_id]);
         if (shopCheck.rowCount === 0) {
@@ -1684,8 +2136,7 @@ app.post('/bookings', async (req, res) => {
             return res.status(404).json({ error: 'Employee not found, inactive, or does not belong to this shop' });
         }
 
-        let customerName = 'Walk-in Customer'; // Default for customer_id = 0
-        // Conditionally check for customer if customer_id is not 0
+        let customerName = 'Walk-in Customer';
         if (customer_id > 0) {
             const customerCheck = await client.query('SELECT customer_id, customer_name FROM customers WHERE customer_id = $1', [customer_id]);
             if (customerCheck.rowCount === 0) {
@@ -1695,8 +2146,6 @@ app.post('/bookings', async (req, res) => {
             customerName = customerCheck.rows[0].customer_name;
         }
 
-
-        // MODIFIED: Only check for existing active bookings if customer_id is provided (not 0)
         if (customer_id > 0) {
             const existingBookingForCustomer = await client.query(`
                 SELECT booking_id FROM bookings
@@ -1732,13 +2181,12 @@ app.post('/bookings', async (req, res) => {
             return res.status(400).json({ error: 'One or more service IDs are invalid' });
         }
         const totalDuration = services.reduce((sum, s) => sum + s.service_duration_minutes, 0);
-        // --- THE CORE LOGIC FOR FINDING THE BEST SLOT ---
+
         let actualJoinTime;
         let foundSlot = false;
         const bookingDurationMs = totalDuration * 60000;
-        const bufferTimeMs = 5 * 60000; // 5 minutes buffer [cite: 229]
+        const bufferTimeMs = 5 * 60000;
 
-        // 1. Get all *active* bookings for this employee, ordered by join_time
         const activeBookings = await client.query(`
             SELECT booking_id, join_time, end_time, service_duration_minutes, status
             FROM bookings
@@ -1746,42 +2194,30 @@ app.post('/bookings', async (req, res) => {
             ORDER BY join_time ASC;
         `, [emp_id]);
 
-        // 2. Determine the earliest possible start time for any new service
-        // This is now + 5 minutes buffer
-        let potentialSlotStart = new Date(currentTime.getTime() + bufferTimeMs); // [cite: 231]
-        // 3. Iterate through existing bookings to find a gap
-        // If there's an 'in_service' booking, the slot can't start before its end time
+        let potentialSlotStart = new Date(currentTime.getTime() + bufferTimeMs);
         if (activeBookings.rows.length > 0 && activeBookings.rows[0].status === 'in_service') {
-            potentialSlotStart = new Date(Math.max(potentialSlotStart.getTime(), dayjs.utc(activeBookings.rows[0].end_time).toDate().getTime() + bufferTimeMs)); // Parse as UTC [cite: 232]
+            potentialSlotStart = new Date(Math.max(potentialSlotStart.getTime(), dayjs.utc(activeBookings.rows[0].end_time).toDate().getTime() + bufferTimeMs));
         }
 
-        // Now iterate through the rest of the queue to find gaps
         for (let i = 0; i < activeBookings.rows.length; i++) {
             const currentBooking = activeBookings.rows[i];
-            const currentBookingStartTime = dayjs.utc(currentBooking.join_time).toDate(); // Parse as UTC [cite: 233]
-            const currentBookingEndTime = dayjs.utc(currentBooking.end_time).toDate(); // Parse as UTC [cite: 234]
+            const currentBookingStartTime = dayjs.utc(currentBooking.join_time).toDate();
+            const currentBookingEndTime = dayjs.utc(currentBooking.end_time).toDate();
 
-            // Check the gap *before* the current booking
-            // The gap must be large enough to accommodate the new booking + buffer
             if (potentialSlotStart.getTime() + bookingDurationMs <= currentBookingStartTime.getTime()) {
-                // Found a slot! [cite: 235]
                 actualJoinTime = potentialSlotStart;
                 foundSlot = true;
                 break;
             }
 
-            // Move potentialSlotStart to after the current booking
-            // This sets up the check for the gap *after* the current booking
-            potentialSlotStart = new Date(currentBookingEndTime.getTime() + bufferTimeMs); // [cite: 236]
+            potentialSlotStart = new Date(currentBookingEndTime.getTime() + bufferTimeMs);
         }
 
-        // If no slot was found in between, place it at the very end of the queue
         if (!foundSlot) {
-            actualJoinTime = potentialSlotStart; // This would be after the last booking + buffer [cite: 237]
+            actualJoinTime = potentialSlotStart;
         }
-        // --- END OF CORE LOGIC ---
 
-        const endTime = new Date(actualJoinTime.getTime() + bookingDurationMs); // [cite: 238]
+        const endTime = new Date(actualJoinTime.getTime() + bookingDurationMs);
         const service_type = services.map(s => ({
             id: s.service_id,
             name: s.service_name,
@@ -1789,14 +2225,13 @@ app.post('/bookings', async (req, res) => {
         }));
         let initialStatus = 'booked';
         if (actualJoinTime <= currentTime) {
-            initialStatus = 'in_service'; // [cite: 240]
+            initialStatus = 'in_service';
         }
 
-        // Convert actualJoinTime and endTime to UTC Date objects for insertion
-        const actualJoinTimeUTC = dayjs(actualJoinTime).utc().toDate(); // [cite: 241]
+        const actualJoinTimeUTC = dayjs(actualJoinTime).utc().toDate();
         const endTimeUTC = dayjs(endTime).utc().toDate();
 
-        const insertQuery = `
+        const insertBookingQuery = `
             INSERT INTO bookings (
                 shop_id, emp_id, customer_id,
                 service_type, join_time, service_duration_minutes, end_time, status
@@ -1804,18 +2239,43 @@ app.post('/bookings', async (req, res) => {
             VALUES ($1, $2, $3, $4::json, $5, $6, $7, $8)
             RETURNING *
         `;
-        const values = [
+        const bookingValues = [
             shop_id,
             emp_id,
             customer_id,
             JSON.stringify(service_type),
-            actualJoinTimeUTC, // Use UTC Date object for insertion
+            actualJoinTimeUTC,
             totalDuration,
-            endTimeUTC,        // Use UTC Date object for insertion
+            endTimeUTC,
             initialStatus
         ];
-        const { rows } = await client.query(insertQuery, values);
-        const newBooking = rows[0];
+        const { rows: bookingRows } = await client.query(insertBookingQuery, bookingValues);
+        const newBooking = bookingRows[0];
+        
+        // --- MODIFIED: ADDED WALLET TRANSACTION LOGIC ---
+        // Only create a wallet transaction if a customer_id is provided
+        if (customer_id > 0) {
+            const bookingFee = 3; // The fixed booking fee amount
+            const walletTransactionQuery = `
+                INSERT INTO wallet_transactions (
+                    customer_id, wallet_id, booking_id, amount, type, balance, status
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING *
+            `;
+            const walletStatus = booking_fee_paid ? 'Paid' : 'Skipped';
+            const walletValues = [
+                customer_id,
+                customer_id, // wallet_id is the same as customer_id
+                newBooking.booking_id,
+                bookingFee,
+                'bookingfees',
+                0, // Balance is 0 for booking fee transactions as per your example
+                walletStatus
+            ];
+            await client.query(walletTransactionQuery, walletValues);
+        }
+        // --- END OF WALLET TRANSACTION LOGIC ---
 
         await client.query('COMMIT');
         const queuePosition = await client.query(`
@@ -1824,27 +2284,25 @@ app.post('/bookings', async (req, res) => {
             WHERE emp_id = $1
             AND status = 'booked'
             AND join_time < $2
-        `, [emp_id, actualJoinTimeUTC]); // Use UTC time for comparison [cite: 247]
+        `, [emp_id, actualJoinTimeUTC]);
 
-        // MODIFIED: Conditionally send notification to customer
         if (customer_id > 0) {
             await sendNotificationToCustomer(customer_id, {
                 title: 'Booking Confirmed!',
-                body: `Your booking (ID: ${newBooking.booking_id}) at ${shopCheck.rows[0].shop_name} with ${empCheck.rows[0].emp_name} is confirmed for ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST 
+                body: `Your booking (ID: ${newBooking.booking_id}) at ${shopCheck.rows[0].shop_name} with ${empCheck.rows[0].emp_name} is confirmed for ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
                 url: `/userdashboard`,
                 bookingId: newBooking.booking_id,
                 type: 'new_booking_customer',
             });
         }
-        // Notify Shop [cite: 249]
+        
         await sendNotificationToShop(shop_id, {
             title: 'New Booking Received!',
-            body: `A new booking (ID: ${newBooking.booking_id}) has been made with ${empCheck.rows[0].emp_name} for ${customerName} at ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`, // Formatted in IST 
+            body: `A new booking (ID: ${newBooking.booking_id}) has been made with ${empCheck.rows[0].emp_name} for ${customerName} at ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
             url: `/shopdashboard`,
             bookingId: newBooking.booking_id,
             type: 'new_booking_shop',
         });
-
 
         res.status(201).json({
             message: 'Booking created successfully',
@@ -1852,24 +2310,24 @@ app.post('/bookings', async (req, res) => {
                 ...newBooking,
                 shop_name: shopCheck.rows[0].shop_name,
                 emp_name: empCheck.rows[0].emp_name,
-                customer_name: customerName, // Use the determined customer name 
+                customer_name: customerName,
                 services: services,
                 total_duration_minutes: totalDuration,
                 queue_position: initialStatus === 'booked' ? queuePosition.rows[0].position : null,
                 formatted_times: {
-                    join_time: dayjs(actualJoinTime).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'), // Formatted in IST [cite: 252]
-                    end_time: dayjs(endTime).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'),     // Formatted in IST
-                    join_time_display: dayjs(actualJoinTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'), // Formatted in IST
-                    end_time_display: dayjs(endTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A')     // Formatted in IST
+                    join_time: dayjs(actualJoinTime).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'),
+                    end_time: dayjs(endTime).tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss'),
+                    join_time_display: dayjs(actualJoinTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'),
+                    end_time_display: dayjs(endTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A')
                 },
                 estimated_wait_time: initialStatus === 'booked' ?
-                    Math.max(0, Math.ceil((actualJoinTime.getTime() - currentTime.getTime()) / (1000 * 60))) + ' minutes' : // [cite: 254]
+                    Math.max(0, Math.ceil((actualJoinTime.getTime() - currentTime.getTime()) / (1000 * 60))) + ' minutes' :
                     'Service starting now',
                 automatic_status_info: {
-                    will_start_at: dayjs(actualJoinTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'), // Formatted in IST [cite: 255]
-                    will_complete_at: dayjs(endTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'),     // Formatted in IST
+                    will_start_at: dayjs(actualJoinTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'),
+                    will_complete_at: dayjs(endTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'),
                     status_changes: {
-                        to_in_service: actualJoinTime <= currentTime ? 'Already started' : 'When join_time is reached', // [cite: 256]
+                        to_in_service: actualJoinTime <= currentTime ? 'Already started' : 'When join_time is reached',
                         to_completed: 'Automatically when service ends'
                     }
                 }
@@ -1877,7 +2335,7 @@ app.post('/bookings', async (req, res) => {
         });
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error('Booking error:', err.message); // [cite: 258]
+        console.error('Booking error:', err.message);
         res.status(500).json({
             error: 'Failed to create booking',
             details: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -2222,6 +2680,10 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
 }
 // --- Route to get bookings for a specific customer with filters and pagination ---
 // --- Route to get bookings for a specific customer with filters and pagination ---
+
+
+
+
 app.post('/getBookingsbycustomer', async (req, res) => {
     const {
         customer_id,
