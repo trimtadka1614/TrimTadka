@@ -42,16 +42,27 @@ const WalletAndSyncUI = ({ customerId }) => {
       return;
     }
 
-    try {
-      setIsLoadingBalance(true);
-      const response = await fetch(`${API_BASE_URL}/customers/${customerId}/wallet`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch wallet balance');
-      }
-      const data = await response.json();
-      setWalletBalance(data.wallet.current_balance);
-      setErrorBalance(null);
-    } catch (err) {
+     try {
+  setIsLoadingBalance(true);
+  const response = await fetch(`${API_BASE_URL}/customers/${customerId}/wallet`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch wallet balance');
+  }
+
+  const data = await response.json();
+
+  // The original code was using `data.wallet.current_balance`.
+  // This new code sums the `balance` property from each transaction.
+  const totalBalance = data.wallet.transactions.reduce((accumulator, transaction) => {
+    // We add the 'balance' value of the current transaction to the accumulator.
+    // The accumulator starts at 0, as defined by the second argument of reduce.
+    return accumulator + transaction.balance;
+  }, 0); // The '0' is the initial value of the accumulator.
+
+  setWalletBalance(totalBalance);
+  setErrorBalance(null);
+} catch (err) {
       console.error('Error fetching wallet balance:', err);
       setErrorBalance('FAILED TO LOAD BALANCE.');
     } finally {
@@ -634,4 +645,5 @@ const WalletModal = ({ customerId, onClose, onWalletUpdate, hasSyncedOnce, setHa
 };
 
 export default WalletAndSyncUI;
+
 
