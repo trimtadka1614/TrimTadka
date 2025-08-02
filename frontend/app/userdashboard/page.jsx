@@ -1975,33 +1975,57 @@ const toggleStylistsExpansion = (shopId) => {
 
           {/* Queue Button */}
           <div className="px-6 pb-6">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (shop.is_active) {
-                  setSelectedShop(shop);
-                  fetchShopDetails(shop.shop_id);
-                }
-              }}
-              className={`w-full font-semibold py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${
-                shop.is_active
-                  ? "bg-[#cb3a1e] text-white hover:bg-[#a62b16]"
-                  : "bg-gray-400 text-gray-700 cursor-not-allowed"
-              }`}
-              disabled={!shop.is_active}
-            >
-              {shop.is_active ? (
-                <>
-                  <ClockIcon className="h-5 w-5 mr-2" />
-                  View Live Queue
-                </>
-              ) : (
-                <>
-                  <XCircleIcon className="h-5 w-5 mr-2" />
-                  Closed
-                </>
-              )}
-            </button>
+              <button
+  onClick={(e) => {
+    e.stopPropagation();
+    if (shop.is_active && !isFetchingShopDetails) {
+      setSelectedShop(shop);
+      fetchShopDetails(shop.shop_id);
+    }
+  }}
+  className={`w-full font-semibold py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${
+    shop.is_active
+      ? "bg-[#cb3a1e] text-white hover:bg-[#a62b16]"
+      : "bg-gray-400 text-gray-700 cursor-not-allowed"
+  } ${isFetchingShopDetails ? "opacity-50 cursor-not-allowed" : ""}`}
+  disabled={!shop.is_active || isFetchingShopDetails}
+>
+  {isFetchingShopDetails ? (
+    <>
+      <svg
+        className="animate-spin h-5 w-5 mr-2 text-white"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          className="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="4"
+        ></circle>
+        <path
+          className="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8v4l3-3-3-3v4a12 12 0 00-12 12h4z"
+        ></path>
+      </svg>
+      <span className="tracking-wider uppercase">Loading Queue…</span>
+    </>
+  ) : shop.is_active ? (
+    <>
+      <ClockIcon className="h-5 w-5 mr-2" />
+      View Live Queue
+    </>
+  ) : (
+    <>
+      <XCircleIcon className="h-5 w-5 mr-2" />
+      Closed
+    </>
+  )}
+</button>
           </div>
         </div>
       );
