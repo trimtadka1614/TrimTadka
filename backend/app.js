@@ -2015,11 +2015,11 @@ app.post('/api/withdraw-cashback', async (req, res) => {
         await client.query('COMMIT');
         
         // 5. Send a success response.
-        const newBalance = currentBalance - withdrawalAmount;
+        // We will now return 0 as the current_balance to the user, as requested.
         return res.status(200).json({
             message: 'Cashback withdrawal request has been submitted successfully.',
             withdrawal_amount: withdrawalAmount,
-            current_balance: newBalance,
+            current_balance: 0, // This is the change to reflect the user's request
             status: 'Requested'
         });
 
