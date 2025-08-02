@@ -463,7 +463,7 @@ function BookingModal({
 </p>
 <p className="text-gray-500 text-sm mt-[-10px] tracking-wider uppercase leading-snug mb-4">
   Skip fee is available for the first month as part of our launch offer. 
-  After one month, a minimal booking fee of <span className="font-bold text-[#cb3a1e]">₹3</span> will be mandatory.
+  After one month, a minimal booking fee of <span className="font-bold text-[#cb3a1e]">₹3 - ₹5</span> will be mandatory.
 </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
@@ -497,7 +497,7 @@ function BookingModal({
   ) : (
     <>
       <CurrencyRupeeIcon className="h-5 w-5 mr-2" />
-      Pay 3 ₹
+      Pay ₹3
     </>
   )}
 </button>
