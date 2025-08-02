@@ -1872,34 +1872,37 @@ app.post('/api/check-cashback', async (req, res) => {
 
 // --- API Route for Withdrawal ---
 // This route is called when the user explicitly requests to withdraw their cashback.
+// This is the backend code that your React app calls.
+// app.post('/api/withdraw-cashback', ...) is a new route for submitting a withdrawal request.
 app.post('/api/withdraw-cashback', async (req, res) => {
-    const { customer_id, upi_id } = req.body;
-    const withdrawalAmount = 15; // Set your fixed withdrawal amount here
-
-    // 1. Validate the incoming request data.
-    if (!customer_id || isNaN(parseInt(customer_id)) || !upi_id) {
-        return res.status(400).json({ error: 'A valid customer_id and upi_id are required.' });
-    }
-
+    // We now expect the withdrawal amount to be sent in the request body, not hard-coded.
+    const { customer_id, upi_id, withdrawalAmount } = req.body;
+    
     const client = await pool.connect();
+
+    // 1. Validate the incoming request data, including the new withdrawalAmount.
+    if (!customer_id || isNaN(parseInt(customer_id)) || !upi_id || !withdrawalAmount || isNaN(parseFloat(withdrawalAmount))) {
+        return res.status(400).json({ error: 'A valid customer_id, upi_id, and withdrawalAmount are required.' });
+    }
 
     try {
         await client.query('BEGIN');
 
-        // 2. Fetch the customer's data and their current wallet balance.
-        // We need the latest balance to perform a check.
+        // 2. Fetch the customer's data and their current wallet balance by summing all transaction balances.
         const customerResult = await client.query(
             `SELECT customer_id, wallet_id FROM customers WHERE customer_id = $1`,
             [customer_id]
         );
 
+        // Calculate the actual current balance by summing the `balance` of all transactions.
         const balanceResult = await client.query(
-            `SELECT balance FROM wallet_transactions WHERE customer_id = $1 ORDER BY id DESC LIMIT 1`,
+            `SELECT SUM(balance) AS total_balance FROM wallet_transactions WHERE customer_id = $1`,
             [customer_id]
         );
 
         const customer = customerResult.rows[0];
-        const currentBalance = balanceResult.rows[0] ? parseFloat(balanceResult.rows[0].balance) : 0;
+        // Ensure a valid balance is fetched; default to 0 if no transactions exist.
+        const currentBalance = balanceResult.rows[0].total_balance ? parseFloat(balanceResult.rows[0].total_balance) : 0;
 
         // Check if the customer exists.
         if (!customer) {
@@ -1914,12 +1917,13 @@ app.post('/api/withdraw-cashback', async (req, res) => {
         }
         
         // 4. Insert a new row for the withdrawal request.
-        // The balance remains the same (currentBalance) because the amount
-        // has not actually been paid out yet.
+        // The type is 'withdrawal' and the status is 'Requested'.
+        // The balance field for this new transaction is the current total balance
+        // before the withdrawal is processed.
         await client.query(
             `INSERT INTO wallet_transactions (customer_id, wallet_id, booking_id, amount, type, status, balance, upi_id, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-            [customer_id, customer.wallet_id, null, withdrawalAmount, 'cashback', 'Requested', currentBalance, upi_id]
+            [customer_id, customer.wallet_id, null, withdrawalAmount, 'withdrawal', 'Requested', currentBalance, upi_id]
         );
 
         await client.query('COMMIT');
@@ -2022,7 +2026,6 @@ app.get('/admin/pay-withdrawal/:transactionId', async (req, res) => {
  * This is called when the admin clicks 'SAVE' after completing the payment.
  * @access Admin only (you should implement authentication/authorization)
  */
-// This is the backend code that your React app calls.
 app.put('/admin/confirm-withdrawal/:transactionId', async (req, res) => {
     const { transactionId } = req.params;
     const client = await pool.connect();
@@ -2052,20 +2055,28 @@ app.put('/admin/confirm-withdrawal/:transactionId', async (req, res) => {
         }
 
         // 3. Update the existing transaction row as requested
+        // Set the balance to the negative of the amount for this withdrawal transaction.
         const updateTransactionQuery = `
             UPDATE wallet_transactions
-            SET status = 'Withdrawn', balance = 0, type = 'withdrawal'
+            SET status = 'Withdrawn', balance = -$2, type = 'withdrawal'
             WHERE id = $1;
         `;
-        await client.query(updateTransactionQuery, [transactionId]);
+        await client.query(updateTransactionQuery, [transactionId, transaction.amount]);
 
         await client.query('COMMIT'); // Commit the transaction if all queries succeed
         
         // 4. Send push notification to the customer
         try {
+            // Recalculate the customer's balance after the withdrawal has been confirmed.
+            const balanceQuery = `
+                SELECT SUM(balance) AS total_balance FROM wallet_transactions WHERE customer_id = $1;
+            `;
+            const balanceResult = await pool.query(balanceQuery, [transaction.customer_id]);
+            const newBalance = balanceResult.rows[0].total_balance ? parseFloat(balanceResult.rows[0].total_balance) : 0;
+            
             const payload = {
                 title: 'Withdrawal Confirmed!',
-                body: `Cashback of ₹${parseFloat(transaction.amount).toFixed(2)} has been successfully withdrawn. Your new balance is ₹0.00.`,
+                body: `Cashback of ₹${parseFloat(transaction.amount).toFixed(2)} has been successfully withdrawn. Your new balance is ₹${newBalance.toFixed(2)}.`,
             };
             await sendNotificationToCustomer(transaction.customer_id, payload);
         } catch (notificationError) {
