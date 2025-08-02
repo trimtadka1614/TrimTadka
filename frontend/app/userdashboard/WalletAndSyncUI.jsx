@@ -288,26 +288,47 @@ const WalletModal = ({ customerId, onClose, onWalletUpdate, hasSyncedOnce, setHa
   const TRANSACTIONS_PER_PAGE = 5;
   
   // New helper function to only fetch wallet data without syncing
-  const fetchWalletDataOnly = useCallback(async () => {
-    if (!customerId) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const walletResponse = await fetch(`${API_BASE_URL}/customers/${customerId}/wallet`);
-      if (!walletResponse.ok) {
-        throw new Error('Failed to fetch wallet data');
-      }
-      const data = await walletResponse.json();
-      setWalletData(data.wallet);
-      const isPending = data.wallet.transactions.some(tx => tx.status === 'Requested');
-      setHasPendingWithdrawal(isPending);
-    } catch (err) {
-      console.error('Error fetching wallet data:', err);
-      setError('FAILED TO LOAD WALLET DETAILS. PLEASE TRY AGAIN.');
-    } finally {
-      setIsLoading(false);
+const fetchWalletDataOnly = useCallback(async () => {
+  if (!customerId) return;
+  setIsLoading(true);
+  setError(null);
+
+  try {
+    const walletResponse = await fetch(`${API_BASE_URL}/customers/${customerId}/wallet`);
+
+    if (!walletResponse.ok) {
+      throw new Error('Failed to fetch wallet data');
     }
-  }, [customerId]);
+
+    const data = await walletResponse.json();
+
+    // Calculate the total balance by summing the 'balance' property of all transactions.
+    const calculatedBalance = data.wallet.transactions.reduce((accumulator, transaction) => {
+      // The reduce function iterates through each transaction in the array.
+      // It adds the 'balance' value of the current transaction to the accumulator.
+      return accumulator + transaction.balance;
+    }, 0); // The initial value of the accumulator is set to 0.
+
+    // Update the wallet data object with the newly calculated balance.
+    const updatedWalletData = {
+      ...data.wallet,
+      current_balance: calculatedBalance,
+    };
+
+    setWalletData(updatedWalletData);
+
+    // Check for pending withdrawals
+    const isPending = data.wallet.transactions.some(tx => tx.status === 'Requested');
+    setHasPendingWithdrawal(isPending);
+
+  } catch (err) {
+    console.error('Error fetching wallet data:', err);
+    setError('FAILED TO LOAD WALLET DETAILS. PLEASE TRY AGAIN.');
+  } finally {
+    setIsLoading(false);
+  }
+}, [customerId]);
+
   
   // The main function for the one-time sync and fetch
   const initialSyncAndFetch = useCallback(async () => {
@@ -645,6 +666,7 @@ const WalletModal = ({ customerId, onClose, onWalletUpdate, hasSyncedOnce, setHa
 };
 
 export default WalletAndSyncUI;
+
 
 
 
