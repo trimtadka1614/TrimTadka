@@ -1957,6 +1957,92 @@ app.post('/api/withdraw-cashback', async (req, res) => {
  * @desc Admin route to fetch all wallet transactions across all customers.
  * @access Admin only (you should implement authentication/authorization)
  */
+// This is the backend code that your React app calls.
+// app.post('/api/withdraw-cashback', ...) is a new route for submitting a withdrawal request.
+app.post('/api/withdraw-cashback', async (req, res) => {
+    // We now expect the withdrawal amount to be sent in the request body, not hard-coded.
+    const { customer_id, upi_id, withdrawalAmount } = req.body;
+    
+    const client = await pool.connect();
+
+    // 1. Validate the incoming request data, including the new withdrawalAmount.
+    if (!customer_id || isNaN(parseInt(customer_id)) || !upi_id || !withdrawalAmount || isNaN(parseFloat(withdrawalAmount))) {
+        return res.status(400).json({ error: 'A valid customer_id, upi_id, and withdrawalAmount are required.' });
+    }
+
+    try {
+        await client.query('BEGIN');
+
+        // 2. Fetch the customer's data and their current wallet balance by summing all transaction balances.
+        const customerResult = await client.query(
+            `SELECT customer_id, wallet_id FROM customers WHERE customer_id = $1`,
+            [customer_id]
+        );
+
+        // Calculate the actual current balance by summing the `balance` of all transactions.
+        const balanceResult = await client.query(
+            `SELECT SUM(balance) AS total_balance FROM wallet_transactions WHERE customer_id = $1`,
+            [customer_id]
+        );
+
+        const customer = customerResult.rows[0];
+        // Ensure a valid balance is fetched; default to 0 if no transactions exist.
+        const currentBalance = balanceResult.rows[0].total_balance ? parseFloat(balanceResult.rows[0].total_balance) : 0;
+
+        // Check if the customer exists.
+        if (!customer) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Customer not found.' });
+        }
+
+        // 3. Check if the customer has enough balance to make a withdrawal request.
+        if (currentBalance < withdrawalAmount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: `Insufficient balance for withdrawal. Current balance: ₹${currentBalance}.` });
+        }
+        
+        // 4. Insert a new row for the withdrawal request.
+        // The type is 'withdrawal' and the status is 'Requested'.
+        // The balance field for this new transaction is the current total balance
+        // before the withdrawal is processed.
+        await client.query(
+            `INSERT INTO wallet_transactions (customer_id, wallet_id, booking_id, amount, type, status, balance, upi_id, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+            // Use parseInt() to convert the float values to integers before inserting into the database.
+            [customer_id, customer.wallet_id, null, parseInt(withdrawalAmount), 'withdrawal', 'Requested', parseInt(currentBalance), upi_id]
+        );
+
+        await client.query('COMMIT');
+        
+        // 5. Send a success response.
+        return res.status(200).json({
+            message: 'Cashback withdrawal request has been submitted successfully.',
+            withdrawal_amount: withdrawalAmount,
+            current_balance: currentBalance,
+            status: 'Requested'
+        });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Database error message:', err.message);
+        res.status(500).json({
+            error: 'Failed to process withdrawal due to a database error.',
+            details: err.message
+        });
+    } finally {
+        // Ensure the database client is always released.
+        client.release();
+    }
+});
+
+
+// --- NEW ADMIN ROUTES ---
+
+/**
+ * @route GET /admin/wallet-transactions
+ * @desc Admin route to fetch all wallet transactions across all customers.
+ * @access Admin only (you should implement authentication/authorization)
+ */
 app.get('/admin/wallet-transactions', async (req, res) => {
   try {
     const query = `
