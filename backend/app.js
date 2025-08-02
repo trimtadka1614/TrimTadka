@@ -2003,22 +2003,23 @@ app.post('/api/withdraw-cashback', async (req, res) => {
         
         // 4. Insert a new row for the withdrawal request.
         // The type is 'withdrawal' and the status is 'Requested'.
-        // The balance field for this new transaction is the current total balance
-        // before the withdrawal is processed.
+        // The balance field for this new transaction is the negative of the withdrawal amount.
+        const transactionBalance = -withdrawalAmount;
         await client.query(
             `INSERT INTO wallet_transactions (customer_id, wallet_id, booking_id, amount, type, status, balance, upi_id, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
             // Use parseInt() to convert the float values to integers before inserting into the database.
-            [customer_id, customer.wallet_id, null, parseInt(withdrawalAmount), 'withdrawal', 'Requested', parseInt(currentBalance), upi_id]
+            [customer_id, customer.wallet_id, null, parseInt(withdrawalAmount), 'withdrawal', 'Requested', parseInt(transactionBalance), upi_id]
         );
 
         await client.query('COMMIT');
         
         // 5. Send a success response.
+        const newBalance = currentBalance - withdrawalAmount;
         return res.status(200).json({
             message: 'Cashback withdrawal request has been submitted successfully.',
             withdrawal_amount: withdrawalAmount,
-            current_balance: currentBalance,
+            current_balance: newBalance,
             status: 'Requested'
         });
 
@@ -2036,7 +2037,7 @@ app.post('/api/withdraw-cashback', async (req, res) => {
 });
 
 
-// --- NEW ADMIN ROUTES ---
+// --- ADMIN ROUTES (No changes needed here) ---
 
 /**
  * @route GET /admin/wallet-transactions
@@ -2183,6 +2184,7 @@ app.put('/admin/confirm-withdrawal/:transactionId', async (req, res) => {
         client.release();
     }
 });
+
 
 
 
