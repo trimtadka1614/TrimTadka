@@ -52,10 +52,23 @@ const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
 import axios from "axios";
 
-async function calculateDistance(lat1, lon1, lat2, lon2, retries = 3) {
-  // Hardcode your API key directly into the URL here
-  const TOMTOM_API_KEY = '5Q9lucwONUWC0yrXWheR16oZtjdBxE0H';
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the Earth in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  return distance * 1.2; // Apply scaling factor
+}
 
+async function calculateDistance(lat1, lon1, lat2, lon2, retries = 3) {
+  const TOMTOM_API_KEY = '5Q9lucwONUWC0yrXWheR16oZtjdBxE0H';
   const url = `https://api.tomtom.com/routing/1/calculateRoute/${lat1},${lon1}:${lat2},${lon2}/json?key=${TOMTOM_API_KEY}&routeType=fastest&travelMode=car&traffic=true`;
 
   try {
@@ -64,22 +77,23 @@ async function calculateDistance(lat1, lon1, lat2, lon2, retries = 3) {
 
     if (data.routes && data.routes.length > 0) {
       const distanceInMeters = data.routes[0].summary.lengthInMeters;
-      // Convert meters to kilometers and round to one decimal place
       const distanceInKm = (distanceInMeters / 1000).toFixed(1);
       return parseFloat(distanceInKm);
     } else {
-      console.error('No routes found in TomTom API response.');
-      return null;
+      console.error('No routes found in TomTom API response. Using fallback.');
+      return parseFloat(haversineDistance(lat1, lon1, lat2, lon2).toFixed(1));
     }
   } catch (error) {
     if (error.response && error.response.status === 429 && retries > 0) {
-      const delay = Math.pow(2, 3 - retries) * 1000; // Exponential delay: 1s, 2s, 4s
+      const delay = Math.pow(2, 3 - retries) * 1000;
       console.warn(`Rate limit hit (429). Retrying in ${delay / 1000} seconds...`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      return calculateDistance(lat1, lon1, lat2, lon2, retries - 1); // Recursive call with one less retry
+      return calculateDistance(lat1, lon1, lat2, lon2, retries - 1);
     }
-    console.error('Error fetching TomTom data:', error.message);
-    return null;
+    
+    // If all retries fail or a different error occurs, use fallback
+    console.error(`Error fetching TomTom data: ${error.message}. Using fallback.`);
+    return parseFloat(haversineDistance(lat1, lon1, lat2, lon2).toFixed(1));
   }
 }
 
