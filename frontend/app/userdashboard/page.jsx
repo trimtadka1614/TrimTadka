@@ -468,21 +468,57 @@ function BookingModal({
 
               <div className="flex flex-col sm:flex-row gap-4">
                 <button
-                  onClick={handlePayment}
-                  className={`flex-1 bg-[#cb3a1e] text-white font-semibold py-3 px-4 rounded-lg hover:bg-[#a62b16] transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${isBookingLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  disabled={isBookingLoading || !isRazorpayReady}
-                >
-                  <CurrencyRupeeIcon className="h-5 w-5 mr-2" />
-                  Pay 3 ₹
-                </button>
-                <button
-                  onClick={handleSkipFee}
-                  className={`flex-1 bg-white text-[#cb3a1e] font-semibold py-3 px-4 border border-[#cb3a1e] rounded-lg hover:bg-[#fef2f2] transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${isBookingLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  disabled={isBookingLoading}
-                >
-                  <XCircleIcon className="h-5 w-5 mr-2" />
-                  Skip Booking Fees
-                </button>
+  onClick={handlePayment}
+  className={`flex-1 bg-[#cb3a1e] text-white font-semibold py-3 px-4 rounded-lg hover:bg-[#a62b16] transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${isBookingLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+  disabled={isBookingLoading || !isRazorpayReady}
+>
+  {isBookingLoading ? (
+    <>
+      <svg
+        className="animate-spin h-5 w-5 mr-2 text-white"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a12 12 0 00-12 12h4z"></path>
+      </svg>
+      <span className="tracking-wider uppercase">Confirming Booking…</span>
+    </>
+  ) : (
+    <>
+      <CurrencyRupeeIcon className="h-5 w-5 mr-2" />
+      Pay 3 ₹
+    </>
+  )}
+</button>
+
+<button
+  onClick={handleSkipFee}
+  className={`flex-1 bg-white text-[#cb3a1e] font-semibold py-3 px-4 border border-[#cb3a1e] rounded-lg hover:bg-[#fef2f2] transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${isBookingLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+  disabled={isBookingLoading}
+>
+  {isBookingLoading ? (
+    <>
+      <svg
+        className="animate-spin h-5 w-5 mr-2 text-[#cb3a1e]"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a12 12 0 00-12 12h4z"></path>
+      </svg>
+      <span className="tracking-wider uppercase">Confirming Booking…</span>
+    </>
+  ) : (
+    <>
+      <XCircleIcon className="h-5 w-5 mr-2" />
+      Skip Booking Fees
+    </>
+  )}
+</button>
+
               </div>
               <p className="text-gray-500 text-sm mt-3 tracking-wider uppercase">
                 Note: The booking fee is non-refundable.
