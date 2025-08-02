@@ -51,6 +51,7 @@ const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
 
 import axios from "axios";
+import WalletAndSyncUI from "./WalletAndSyncUI";
 
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radius of the Earth in km
@@ -207,11 +208,34 @@ function BookingModal({
   services,
   onClose,
   onBookingComplete,
+  session // NEW: Accept the session object as a prop
 }) {
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
   const [bookingMessage, setBookingMessage] = useState("");
   const [isBookingLoading, setIsBookingLoading] = useState(false);
   const [bookingErrorDetails, setBookingErrorDetails] = useState("");
+  const [isRazorpayReady, setIsRazorpayReady] = useState(false);
+
+  // Load Razorpay script on component mount
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => {
+      console.log("Razorpay script loaded successfully.");
+      setIsRazorpayReady(true);
+    };
+    script.onerror = () => {
+      console.error("Failed to load Razorpay script.");
+      toast.error("Failed to load payment gateway. Please try again later.");
+      setIsRazorpayReady(false);
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
 
   const handleServiceChange = (serviceId) => {
     setSelectedServiceIds((prevSelected) =>
@@ -221,31 +245,16 @@ function BookingModal({
     );
   };
 
-  const handleBookingSubmit = async () => {
+  const processBooking = async (bookingFeePaid) => {
     setBookingMessage("");
     setBookingErrorDetails("");
     setIsBookingLoading(true);
-
-    if (selectedServiceIds.length === 0) {
-      const errorMessage = "Please select at least one service.";
-      setBookingMessage(errorMessage);
-      toast.error(errorMessage, {
-        position: "top-right",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      });
-      setIsBookingLoading(false);
-      return;
-    }
-
     const payload = {
       shop_id: shopId,
       emp_id: empId,
       customer_id: customerId,
       service_ids: selectedServiceIds,
+      booking_fee_paid: bookingFeePaid,
     };
 
     try {
@@ -264,7 +273,6 @@ function BookingModal({
         const successMessage = data.message || "Booking created successfully!";
         setBookingMessage(successMessage);
         
-        // Show success toast
         toast.success(successMessage, {
           position: "top-right",
           autoClose: 4000,
@@ -274,9 +282,8 @@ function BookingModal({
           draggable: true,
         });
 
-        onBookingComplete(true, data.booking); // Pass success and booking data
+        onBookingComplete(true, data.booking);
         
-        // Close the modal after a successful booking with a slight delay
         setTimeout(() => {
           onClose();
         }, 1000);
@@ -287,7 +294,6 @@ function BookingModal({
         setBookingMessage(errorMessage);
         setBookingErrorDetails(errorDetails);
         
-        // Show error toast with details if available
         toast.error(
           errorDetails 
             ? `${errorMessage}: ${errorDetails}` 
@@ -302,7 +308,7 @@ function BookingModal({
           }
         );
 
-        onBookingComplete(false, null, errorMessage); // Pass failure and error
+        onBookingComplete(false, null, errorMessage);
       }
     } catch (error) {
       const errorMessage = "An unexpected error occurred during booking.";
@@ -311,7 +317,6 @@ function BookingModal({
       setBookingMessage(errorMessage);
       setBookingErrorDetails(error.message);
       
-      // Show network error toast
       toast.error(`${errorMessage} Please check your connection and try again.`, {
         position: "top-right",
         autoClose: 5000,
@@ -321,21 +326,77 @@ function BookingModal({
         draggable: true,
       });
 
-      onBookingComplete(false, null, networkError); // Pass failure and error
+      onBookingComplete(false, null, networkError);
       console.error("Booking fetch error:", error);
     } finally {
       setIsBookingLoading(false);
     }
   };
 
-  // Toast notification for service selection (optional enhancement)
-  const handleServiceChangeWithToast = (serviceId) => {
-    const service = services.find(s => s.service_id === serviceId);
-    const isCurrentlySelected = selectedServiceIds.includes(serviceId);
-    
-    handleServiceChange(serviceId);
-    
+  const handlePayment = async () => {
+    if (selectedServiceIds.length === 0) {
+      toast.error("Please select at least one service.", { autoClose: 3000 });
+      return;
+    }
+    if (!isRazorpayReady || typeof window.Razorpay === 'undefined') {
+      toast.error("Payment gateway is not ready. Please try again in a moment.");
+      return;
+    }
+    // Check if session data is available
+    if (!session || !session.user || (!session.user.name && !session.user.phone)) {
+        toast.error("Customer details are missing from the session. Please log in again.");
+        return;
+    }
 
+    setIsBookingLoading(true);
+
+    try {
+      const orderResponse = await axios.post(`${API_BASE_URL}/create-razorpay-order`, { amount: 300 });
+      const { id: order_id, amount, currency } = orderResponse.data;
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: amount,
+        currency: currency,
+        name: "Salon Booking Fee",
+        description: "Booking Fees for your appointment",
+        order_id: order_id,
+        handler: async (response) => {
+          await processBooking(true);
+        },
+        // Use the user's session data for prefill, with fallbacks
+        prefill: {
+          name: session.user.name || "",
+          contact: session.user.phone || "",
+        },
+        notes: {
+          booking_fee: "3",
+        },
+        theme: {
+          color: "#cb3a1e",
+        },
+      };
+
+      const rzp1 = new window.Razorpay(options);
+      rzp1.on("payment.failed", (response) => {
+        toast.error("Payment failed. Please try again.");
+        setIsBookingLoading(false);
+        console.error("Razorpay error:", response.error);
+      });
+      rzp1.open();
+    } catch (error) {
+      toast.error("Failed to create payment order. Please try again.");
+      setIsBookingLoading(false);
+      console.error("Error creating Razorpay order:", error);
+    }
+  };
+
+  const handleSkipFee = async () => {
+    if (selectedServiceIds.length === 0) {
+      toast.error("Please select at least one service.", { autoClose: 3000 });
+      return;
+    }
+    await processBooking(false); 
   };
 
   return (
@@ -370,7 +431,7 @@ function BookingModal({
                   <input
                     type="checkbox"
                     checked={selectedServiceIds.includes(service.service_id)}
-                    onChange={() => handleServiceChangeWithToast(service.service_id)}
+                    onChange={() => handleServiceChange(service.service_id)}
                     className="form-checkbox h-5 w-5 text-[#cb3a1e] rounded focus:ring-[#cb3a1e]"
                   />
                   <span className="ml-3 tracking-wider uppercase text-sm text-gray-800 font-medium flex-grow">
@@ -394,6 +455,41 @@ function BookingModal({
             </p>
           )}
 
+          {customerId > 0 && selectedServiceIds.length > 0 && (
+            <div className="mt-6 border-t border-gray-200 pt-6">
+              <p className="text-gray-700 font-semibold flex items-center mb-4 tracking-wider uppercase">
+  <ReceiptIcon className="h-5 w-5 mr-2 text-[#cb3a1e] " />
+  Booking Fee: Pay or Skip
+</p>
+<p className="text-gray-500 text-sm mt-[-10px] tracking-wider uppercase leading-snug mb-4">
+  Skip fee is available for the first month as part of our launch offer. 
+  After one month, a minimal booking fee of <span className="font-bold text-[#cb3a1e]">₹3</span> will be mandatory.
+</p>
+
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                  onClick={handlePayment}
+                  className={`flex-1 bg-[#cb3a1e] text-white font-semibold py-3 px-4 rounded-lg hover:bg-[#a62b16] transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${isBookingLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={isBookingLoading || !isRazorpayReady}
+                >
+                  <CurrencyRupeeIcon className="h-5 w-5 mr-2" />
+                  Pay 3 ₹
+                </button>
+                <button
+                  onClick={handleSkipFee}
+                  className={`flex-1 bg-white text-[#cb3a1e] font-semibold py-3 px-4 border border-[#cb3a1e] rounded-lg hover:bg-[#fef2f2] transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${isBookingLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={isBookingLoading}
+                >
+                  <XCircleIcon className="h-5 w-5 mr-2" />
+                  Skip Booking Fees
+                </button>
+              </div>
+              <p className="text-gray-500 text-sm mt-3 tracking-wider uppercase">
+                Note: The booking fee is non-refundable.
+              </p>
+            </div>
+          )}
+
           {bookingMessage && (
             <div
               className={`mt-4 p-3 rounded-md ${
@@ -408,36 +504,6 @@ function BookingModal({
               )}
             </div>
           )}
-
-          <button
-            onClick={handleBookingSubmit}
-            className="w-full bg-[#cb3a1e] text-white font-semibold py-3 px-4 rounded-lg hover:bg-[#a62b16] transition-colors duration-200 flex items-center justify-center mt-6 tracking-wider uppercase"
-            disabled={isBookingLoading || selectedServiceIds.length === 0}
-          >
-            {isBookingLoading ? (
-              <svg
-                className="animate-spin h-5 w-5 text-white mr-3"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-            ) : (
-              <SparklesIcon className="h-5 w-5 mr-2" />
-            )}
-            {isBookingLoading ? "Processing Booking..." : "Confirm Booking"}
-          </button>
         </div>
       </div>
     </div>
@@ -1421,7 +1487,7 @@ const toggleStylistsExpansion = (shopId) => {
         </div>
 
         {/* Notification Bell */}
-        <div className="flex flex-col items-center mt-3">
+        <div className="flex flex-col items-center mt-[-5px]">
           <button
             onClick={isPushSubscribed ? unsubscribeUser : subscribeUser}
             className={`p-2 rounded-full transition-colors duration-200 ${
@@ -1437,8 +1503,15 @@ const toggleStylistsExpansion = (shopId) => {
           >
             <BellIcon className="h-4 w-4" />
           </button>
-          <span className="text-[10px] text-white tracking-wider uppercase mt-1">Enable Notifications</span>
+          {/* <span className="text-[10px] text-white tracking-wider uppercase mt-1">Enable Notifications</span> */}
         </div>
+ <div className="flex flex-col items-center mt-[-5px]">
+        
+        <WalletAndSyncUI customerId={session.user.id} />
+     
+        </div>
+
+
 
         {/* Logout Icon Only */}
         <button
@@ -2119,14 +2192,15 @@ const toggleStylistsExpansion = (shopId) => {
           selectedBarberForBooking &&
           session?.user?.id &&
           selectedShop && (
-            <BookingModal
-              shopId={selectedShop.shop_id}
-              empId={selectedBarberForBooking.emp_id}
-              customerId={session.user.id}
-              services={selectedBarberForBooking.services}
-              onClose={() => setShowBookingModal(false)}
-              onBookingComplete={handleBookingComplete}
-            />
+          <BookingModal
+  shopId={selectedShop.shop_id}
+  empId={selectedBarberForBooking.emp_id}
+  customerId={session.user.id}
+  services={selectedBarberForBooking.services}
+  onClose={() => setShowBookingModal(false)}
+  onBookingComplete={handleBookingComplete}
+  session={session} // Add the session object here
+/>
           )}
       </div>
     );
