@@ -1822,7 +1822,15 @@ const toggleStylistsExpansion = (shopId) => {
               )}
 
               {/* Show shops always, but disable booking button if active booking exists */}
-            {filteredShops.map((shop) => {
+             {filteredShops.length === 0 && !isFetchingShops ? (
+  <div className="text-center py-12">
+    <p className="text-WHITE text-sm tracking-wider uppercase">
+      No barbershops found matching your search.
+    </p>
+  </div>
+) : (
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+   {filteredShops.map((shop) => {
   const services = [
     ...new Set(
       shop.barbers?.flatMap(
