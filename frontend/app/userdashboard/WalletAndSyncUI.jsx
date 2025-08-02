@@ -142,18 +142,18 @@ console.log("Total Balance:",totalBalance)
 // =============================================================
 //  Withdrawal Modal Component (Refactored to be self-contained)
 // =============================================================
-const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess }) => {
+const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess, withdrawalAmount }) => {
   const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
   const [upiId, setUpiId] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const upiInputRef = useRef(null);
-  
+
   // UPI ID validation function
   const validateUpiId = (upiId) => {
     const upiPattern = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/;
     return upiPattern.test(upiId);
   };
-  
+
   useEffect(() => {
     if (upiInputRef.current) {
       setTimeout(() => {
@@ -161,15 +161,15 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess }) => {
       }, 100);
     }
   }, []);
-  
+
   const handleWithdraw = async () => {
     if (!upiId.trim() || !validateUpiId(upiId.trim())) {
       toast.error('Please enter a valid UPI ID.');
       return;
     }
-    
+
     setIsWithdrawing(true);
-    
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/withdraw-cashback`, {
         method: 'POST',
@@ -177,24 +177,25 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess }) => {
         body: JSON.stringify({
           customer_id: customerId,
           upi_id: upiId.trim(),
+          withdrawalAmount: withdrawalAmount, // Pass the dynamic amount here
         }),
       });
-      
+
       const responseData = await response.json();
       if (!response.ok) {
         throw new Error(responseData.error || 'Failed to process withdrawal.');
       }
-      
+
       toast.success('Withdrawal request submitted! Your funds will be processed shortly.');
-      
+
       // Call the success callback to trigger a refresh in the parent
       onWithdrawSuccess();
-      
+
       // Close the modal after a short delay
       setTimeout(() => {
         onClose();
       }, 500);
-      
+
     } catch (err) {
       console.error('Withdrawal error:', err);
       toast.error(err.message || 'An unexpected error occurred.');
@@ -202,11 +203,11 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess }) => {
       setIsWithdrawing(false);
     }
   };
-  
+
   const isDisabled = isWithdrawing || !upiId.trim() || !validateUpiId(upiId.trim());
-  
+
   return (
-    <div className="absolute inset-0 bg-white z-20 flex flex-col p-5 animate-fade-in">
+    <div className="absolute inset-0 bg-white/90 z-20 flex flex-col p-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-gray-800">
           WITHDRAW CASHBACK
@@ -217,7 +218,7 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess }) => {
       </div>
       <div className="mt-4 flex flex-col flex-grow">
         <p className="text-sm text-gray-600 mb-4">
-          Enter your UPI ID to withdraw the cashback amount of ₹15 instantly to your account.
+          Enter your UPI ID to withdraw the cashback amount of ₹{parseFloat(withdrawalAmount).toFixed(2)} instantly to your account.
         </p>
         <div className="relative mb-4">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -262,7 +263,7 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess }) => {
           ) : (
             <>
               <Send className="h-4 w-4 mr-2" />
-              REQUEST WITHDRAWAL OF ₹15
+              REQUEST WITHDRAWAL OF ₹{parseFloat(withdrawalAmount).toFixed(2)}
             </>
           )}
         </button>
@@ -666,6 +667,7 @@ const fetchWalletDataOnly = useCallback(async () => {
 };
 
 export default WalletAndSyncUI;
+
 
 
 
