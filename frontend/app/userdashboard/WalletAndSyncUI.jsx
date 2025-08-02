@@ -59,7 +59,7 @@ const WalletAndSyncUI = ({ customerId }) => {
     // The accumulator starts at 0, as defined by the second argument of reduce.
     return accumulator + transaction.balance;
   }, 0); // The '0' is the initial value of the accumulator.
-
+console.log("Total Balance:",totalBalance)
   setWalletBalance(totalBalance);
   setErrorBalance(null);
 } catch (err) {
@@ -645,5 +645,6 @@ const WalletModal = ({ customerId, onClose, onWalletUpdate, hasSyncedOnce, setHa
 };
 
 export default WalletAndSyncUI;
+
 
 
