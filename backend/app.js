@@ -1905,7 +1905,7 @@ app.post('/api/withdraw-cashback', async (req, res) => {
 
         const customer = customerResult.rows[0];
         // Ensure a valid balance is fetched; default to 0 if no transactions exist.
-        const currentBalance =  0;
+        const currentBalance =  balanceResult.rows[0].total_balance ? parseFloat(balanceResult.rows[0].total_balance) : 0;;
 
         // Check if the customer exists.
         if (!customer) {
@@ -1922,7 +1922,7 @@ app.post('/api/withdraw-cashback', async (req, res) => {
         // 4. Insert a new row for the withdrawal request.
         // The type is 'withdrawal' and the status is 'Requested'.
         // The balance field for this new transaction is the negative of the withdrawal amount.
-        const transactionBalance = -withdrawalAmount;
+        const transactionBalance = 0;
         await client.query(
             `INSERT INTO wallet_transactions (customer_id, wallet_id, booking_id, amount, type, status, balance, upi_id, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
@@ -2062,11 +2062,12 @@ app.put('/admin/confirm-withdrawal/:transactionId', async (req, res) => {
         // 3. Update the existing transaction row as requested
         // Set the balance to the negative of the amount for this withdrawal transaction.
         const updateTransactionQuery = `
-            UPDATE wallet_transactions
-            SET status = 'Withdrawn', balance = -$2, type = 'withdrawal'
-            WHERE id = $1;
-        `;
-        await client.query(updateTransactionQuery, [transactionId, transaction.amount]);
+    UPDATE wallet_transactions
+    SET status = 'Withdrawn', balance = -amount, type = 'withdrawal'
+    WHERE id = $1;
+`;
+await client.query(updateTransactionQuery, [transactionId]);
+
 
         await client.query('COMMIT'); // Commit the transaction if all queries succeed
         
