@@ -50,19 +50,37 @@ dayjs.extend(isSameOrBefore);
 const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
 
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c;
-  return distance;
+import axios from "axios";
+
+async function calculateDistance(lat1, lon1, lat2, lon2, retries = 3) {
+  // Hardcode your API key directly into the URL here
+  const TOMTOM_API_KEY = '5Q9lucwONUWC0yrXWheR16oZtjdBxE0H';
+
+  const url = `https://api.tomtom.com/routing/1/calculateRoute/${lat1},${lon1}:${lat2},${lon2}/json?key=${TOMTOM_API_KEY}&routeType=fastest&travelMode=car&traffic=true`;
+
+  try {
+    const response = await axios.get(url);
+    const data = response.data;
+
+    if (data.routes && data.routes.length > 0) {
+      const distanceInMeters = data.routes[0].summary.lengthInMeters;
+      // Convert meters to kilometers and round to one decimal place
+      const distanceInKm = (distanceInMeters / 1000).toFixed(1);
+      return parseFloat(distanceInKm);
+    } else {
+      console.error('No routes found in TomTom API response.');
+      return null;
+    }
+  } catch (error) {
+    if (error.response && error.response.status === 429 && retries > 0) {
+      const delay = Math.pow(2, 3 - retries) * 1000; // Exponential delay: 1s, 2s, 4s
+      console.warn(`Rate limit hit (429). Retrying in ${delay / 1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return calculateDistance(lat1, lon1, lat2, lon2, retries - 1); // Recursive call with one less retry
+    }
+    console.error('Error fetching TomTom data:', error.message);
+    return null;
+  }
 }
 
 // === SearchBar component defined OUTSIDE UserDashboard ===
@@ -672,89 +690,83 @@ function urlB64ToUint8Array(base64String) {
       checkSubscriptionStatus(); // Check backend status
     }
   }, [session?.user?.id, registerServiceWorker, checkSubscriptionStatus]);
-  const fetchShops = useCallback(
-    async (lat, long) => {
-      if (shops.length === 0) {
-        setIsFetchingShops(true);
+const fetchShops = useCallback(
+  async (lat, long) => {
+    if (shops.length === 0) {
+      setIsFetchingShops(true);
+    }
+    setFetchError(null);
+    try {
+      const queryParams = new URLSearchParams();
+      if (lat !== null && long !== null) {
+        queryParams.append("lat", lat);
+        queryParams.append("long", long);
       }
-      setFetchError(null);
-      try {
-        const queryParams = new URLSearchParams();
-        if (lat !== null && long !== null) {
-          queryParams.append("lat", lat);
-          queryParams.append("long", long);
+      const url = `${API_BASE_URL}/shops/simple?${queryParams.toString()}`;
+      console.log("Fetching shops from:", url);
+
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      console.log("Shops fetch response status:", res.status);
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        const parsedError = JSON.parse(errorText);
+        throw new Error(parsedError.message || `Server error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      console.log("Shops data received:", data);
+
+      // Create an array of promises for distance calculation
+      const distancePromises = data.shops.map(async (shop) => {
+        let distance = Infinity;
+        if (shop.location?.distance_from_you) {
+          const parsedBackendDistance = parseFloat(
+            shop.location.distance_from_you.split(" ")[0]
+          );
+          if (!isNaN(parsedBackendDistance)) {
+            distance = parsedBackendDistance;
+          }
         }
 
-        const url = `${API_BASE_URL}/shops/simple?${queryParams.toString()}`;
-        console.log("Fetching shops from:", url);
-
-        const res = await fetch(url, {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-        });
-
-        console.log("Shops fetch response status:", res.status);
-
-        if (!res.ok) {
-          const errorText = await res.text();
-          let parsedError = {};
-          try {
-            parsedError = JSON.parse(errorText);
-          } catch (jsonError) {
-            parsedError.message = errorText;
-          }
-          console.error("Error response from shops API:", parsedError.message);
-          throw new Error(parsedError.message || `Server error: ${res.status}`);
+        if (
+          lat !== null &&
+          long !== null &&
+          shop.location?.coordinates &&
+          (distance === Infinity || isNaN(distance))
+        ) {
+          // Await the asynchronous calculateDistance function
+          distance = await calculateDistance(
+            lat,
+            long,
+            shop.location.coordinates.lat,
+            shop.location.coordinates.long
+          );
         }
+        return { ...shop, distance_from_you: distance };
+      });
 
-        const data = await res.json();
-        console.log("Shops data received:", data);
+      // Wait for all distance calculations to complete
+      let processedShops = await Promise.all(distancePromises);
 
-        let processedShops = data.shops.map((shop) => {
-          let distance = Infinity;
-          if (shop.location?.distance_from_you) {
-            const parsedBackendDistance = parseFloat(
-              shop.location.distance_from_you.split(" ")[0]
-            );
-            if (!isNaN(parsedBackendDistance)) {
-              distance = parsedBackendDistance;
-            }
-          }
+      processedShops = processedShops.sort(
+        (a, b) => a.distance_from_you - b.distance_from_you
+      );
 
-          if (
-            lat !== null &&
-            long !== null &&
-            shop.location?.coordinates &&
-            (distance === Infinity || isNaN(distance))
-          ) {
-            distance = calculateDistance(
-              lat,
-              long,
-              shop.location.coordinates.lat,
-              shop.location.coordinates.long
-            );
-          }
-          return { ...shop, distance_from_you: distance };
-        });
-
-        processedShops = processedShops.sort(
-          (a, b) => a.distance_from_you - b.distance_from_you
-        );
-
-        setShops(processedShops);
-      } catch (error) {
-        console.error("Error fetching shops:", error);
-        setFetchError(
-          error.message || "Failed to fetch shops. Please try again."
-        );
-      } finally {
-        setIsFetchingShops(false);
-      }
-    },
-    [shops.length]
-  );
+      setShops(processedShops);
+    } catch (error) {
+      console.error("Error fetching shops:", error);
+      setFetchError(error.message || "Failed to fetch shops. Please try again.");
+    } finally {
+      setIsFetchingShops(false);
+    }
+  },
+  [shops.length, API_BASE_URL]
+);
 
   const fetchShopDetails = useCallback(
     async (shopId) => {
