@@ -195,7 +195,7 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess }) => {
   const isDisabled = isWithdrawing || !upiId.trim() || !validateUpiId(upiId.trim());
   
   return (
-    <div className="absolute inset-0 bg-white/90 z-20 flex flex-col p-5 animate-fade-in">
+    <div className="absolute inset-0 bg-white z-20 flex flex-col p-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-gray-800">
           WITHDRAW CASHBACK
@@ -634,3 +634,4 @@ const WalletModal = ({ customerId, onClose, onWalletUpdate, hasSyncedOnce, setHa
 };
 
 export default WalletAndSyncUI;
+
