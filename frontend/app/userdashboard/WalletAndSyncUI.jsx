@@ -652,10 +652,11 @@ const fetchWalletDataOnly = useCallback(async () => {
           )}
 
           {showWithdrawForm && (
-            <WithdrawalModal
+           <WithdrawalModal
               customerId={customerId}
               onClose={() => setShowWithdrawForm(false)}
               onWithdrawSuccess={handleWithdrawalSuccess}
+              withdrawalAmount={walletData.current_balance}
             />
           )}
         </div>
@@ -667,6 +668,7 @@ const fetchWalletDataOnly = useCallback(async () => {
 };
 
 export default WalletAndSyncUI;
+
 
 
 
