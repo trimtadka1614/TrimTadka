@@ -1822,15 +1822,7 @@ const toggleStylistsExpansion = (shopId) => {
               )}
 
               {/* Show shops always, but disable booking button if active booking exists */}
-             {filteredShops.length === 0 && !isFetchingShops ? (
-  <div className="text-center py-12">
-    <p className="text-WHITE text-sm tracking-wider uppercase">
-      No barbershops found matching your search.
-    </p>
-  </div>
-) : (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-   {filteredShops.map((shop) => {
+            {filteredShops.map((shop) => {
   const services = [
     ...new Set(
       shop.barbers?.flatMap(
@@ -1840,7 +1832,7 @@ const toggleStylistsExpansion = (shopId) => {
   ];
   const isExpanded = expandedServicesShopId === shop.shop_id;
 
-  // Logic to calculate estimated wait time for the shop
+  // The logic to calculate the estimated wait time range
   const getShopWaitTime = (barbers) => {
     if (!barbers || barbers.length === 0) {
       return "No wait";
@@ -1854,7 +1846,7 @@ const toggleStylistsExpansion = (shopId) => {
     const waitTimes = presentBarbers
       .map((b) => {
         const timeMatch = b.queue_info.estimated_wait_time.match(/\d+/);
-        return timeMatch ? parseInt(timeMatch[0], 10) : 0;
+        return timeMatch ? parseInt(timeMatch[0], 10) : null;
       })
       .filter((time) => time !== null);
 
@@ -1863,12 +1855,20 @@ const toggleStylistsExpansion = (shopId) => {
     }
 
     const minWaitTime = Math.min(...waitTimes);
+    const maxWaitTime = Math.max(...waitTimes);
 
-    if (minWaitTime === 0) {
-      return "No wait";
+    if (minWaitTime === maxWaitTime) {
+      if (minWaitTime === 0) {
+        return "No wait";
+      }
+      return `${minWaitTime} mins`;
     }
 
-    return `${minWaitTime} mins`;
+    if (minWaitTime === 0) {
+      return `0 - ${maxWaitTime} mins`;
+    }
+
+    return `${minWaitTime} - ${maxWaitTime} mins`;
   };
 
   const shopWaitTime = getShopWaitTime(shop.barbers);
@@ -1945,7 +1945,7 @@ const toggleStylistsExpansion = (shopId) => {
               </span>
             )}
           </div>
-          {/* Add this new line to display the estimated wait time */}
+          {/* Display the estimated wait time range */}
           <div className="flex items-center mt-2">
             <ClockIcon className="h-4 w-4 mr-1 text-gray-600" />
             <p className="text-sm text-gray-600 font-medium">
