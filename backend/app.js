@@ -1,3 +1,4 @@
+
 const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
@@ -1144,6 +1145,7 @@ app.post('/shop_status', async (req, res) => {
         });
     }
 });
+
 // Register a service (for barber shops)
 app.post('/register_service', async (req, res) => {
     const { service_name, service_duration_minutes } = req.body;
