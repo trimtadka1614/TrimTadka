@@ -698,7 +698,6 @@ app.get('/shops/simple', async (req, res) => {
     const TOMTOM_API_KEY = '5Q9lucwONUWC0yrXWheR16oZtjdBxE0H'; // Replace with your actual API key
 
     try {
-        // ... (shopsQuery and shopsResult remain the same) ...
         const shopsQuery = `
             SELECT 
                 s.shop_id,
@@ -708,6 +707,7 @@ app.get('/shops/simple', async (req, res) => {
                 s.address,
                 s.ph_number,
                 s.is_active AS shop_is_active,
+                s.image_url, -- Added image_url
                 e.emp_id,
                 e.emp_name,
                 e.is_active AS emp_is_active,
@@ -729,13 +729,12 @@ app.get('/shops/simple', async (req, res) => {
             LEFT JOIN employees e ON s.shop_id = e.shop_id
             LEFT JOIN employee_services es ON e.emp_id = es.emp_id
             LEFT JOIN services srv ON es.service_id = srv.service_id
-            GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, e.emp_id, e.emp_name, e.is_active
+            GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, s.image_url, e.emp_id, e.emp_name, e.is_active
             ORDER BY s.shop_name, e.emp_name
         `;
 
         const shopsResult = await pool.query(shopsQuery);
         
-        // ... (bookingsQuery and bookingsResult remain the same) ...
         const currentTime = dayjs().utc().toDate();
         const bookingsQuery = `
             SELECT 
@@ -759,7 +758,6 @@ app.get('/shops/simple', async (req, res) => {
         const bookingsResult = await pool.query(bookingsQuery, [currentTime]);
         const bookings = bookingsResult.rows;
 
-        // ... (shopsMap creation and queue logic remain the same) ...
         const shopsMap = new Map();
         
         shopsResult.rows.forEach(row => {
@@ -769,6 +767,7 @@ app.get('/shops/simple', async (req, res) => {
                     shop_name: row.shop_name,
                     ph_number: row.ph_number,
                     is_active: row.shop_is_active,
+                    image_url: row.image_url, // Added image_url
                     location: {
                         address: row.address,
                         coordinates: {
@@ -917,14 +916,6 @@ app.get('/shops/simple', async (req, res) => {
 });
 
 
-
-// Get shops with detailed barber info & queue status (renamed to /shop_status and changed to POST)
-// Get shops with detailed barber info & queue status (renamed to /shop_status and changed to POST)
-// Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' and 'haversine' are imported if used.
-// Example imports if not already present:
-// const dayjs = require('dayjs');
-// const haversine = require('haversine'); // You'd need to implement or import this function
-
 app.post('/shop_status', async (req, res) => {
     const { customer_id, lat, long, shop_id } = req.body;
     const TOMTOM_API_KEY = '5Q9lucwONUWC0yrXWheR16oZtjdBxE0H'; // Replace with your actual API key
@@ -944,6 +935,7 @@ app.post('/shop_status', async (req, res) => {
                 s.address,
                 s.ph_number,
                 s.is_active AS shop_is_active,
+                s.image_url, -- Added image_url
                 e.emp_id,
                 e.emp_name,
                 e.is_active AS emp_is_active,
@@ -966,7 +958,7 @@ app.post('/shop_status', async (req, res) => {
             LEFT JOIN employee_services es ON e.emp_id = es.emp_id
             LEFT JOIN services srv ON es.service_id = srv.service_id
             WHERE s.shop_id = $1
-            GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, e.emp_id, e.emp_name, e.is_active
+            GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, s.image_url, e.emp_id, e.emp_name, e.is_active
             ORDER BY s.shop_name, e.emp_name
         `;
 
@@ -1009,6 +1001,7 @@ app.post('/shop_status', async (req, res) => {
                     shop_name: row.shop_name,
                     ph_number: row.ph_number,
                     is_active: row.shop_is_active,
+                    image_url: row.image_url, // Added image_url
                     location: {
                         address: row.address,
                         coordinates: {
