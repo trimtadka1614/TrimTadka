@@ -93,7 +93,7 @@ export default function ShopCard({
     }
     const interval = setInterval(() => {
       setActiveImageIndex((prevIndex) => (prevIndex + 1) % shop.image_url.length);
-    }, 4000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [hasImageUrl, shop.image_url]);
 
@@ -366,3 +366,4 @@ export default function ShopCard({
   );
 
 }
+
