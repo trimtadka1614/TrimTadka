@@ -41,6 +41,7 @@ import {
   AlarmClockIcon,
   CheckCircle2Icon,
   LoaderIcon,
+  Loader
 } from "lucide-react";
 import dayjs from "dayjs"; // Import dayjs for date formatting
 dayjs.extend(duration);
@@ -602,7 +603,7 @@ export default function UserDashboard() {
   // New state for push notifications
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
   const [swRegistration, setSwRegistration] = useState(null);
-
+ const [isLoadingNotification, setIsLoadingNotification] = useState(false);
   // Function to convert VAPID public key from Base64 to Uint8Array
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY; 
 
@@ -640,25 +641,70 @@ function urlB64ToUint8Array(base64String) {
 
 
     const checkSubscriptionStatus = useCallback(async () => {
-    if (!session?.user?.id) return;
-    try {
-      const response = await fetch(`${API_BASE_URL}/customers/${session.user.id}/subscription-status`);
-      if (response.ok) {
-        const data = await response.json();
-        setIsPushSubscribed(data.isSubscribed);
-      }
-    } catch (error) {
-      console.error('Error checking subscription status:', error);
+  if (!session?.user?.id) return;
+  try {
+    const response = await fetch(`${API_BASE_URL}/customers/${session.user.id}/subscription-status`);
+    if (response.ok) {
+      const data = await response.json();
+      setIsPushSubscribed(data.isSubscribed);
     }
-  }, [session?.user?.id]);
+  } catch (error) {
+    console.error('Error checking subscription status:', error);
+  }
+}, [session?.user?.id]);
 
- 
+const subscribeUser = useCallback(async () => {
+  setIsLoadingNotification(true); // Start loading
 
-  const subscribeUser = useCallback(async () => {
-    if (!swRegistration || !session?.user?.id || !VAPID_PUBLIC_KEY) {
-      const warningMessage = 'Cannot subscribe: Service Worker not registered, User not logged in, or VAPID Public Key missing.';
-      console.warn(warningMessage);
-      toast.warn('Push notifications are not available at the moment.', {
+  if (!swRegistration || !session?.user?.id || !VAPID_PUBLIC_KEY) {
+    const warningMessage = 'Cannot subscribe: Service Worker not registered, User not logged in, or VAPID Public Key missing.';
+    console.warn(warningMessage);
+    toast.warn('Push notifications are not available at the moment.', {
+      position: "top-right",
+      autoClose: 4000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+    setIsLoadingNotification(false); // Stop loading on early exit
+    return;
+  }
+
+  if (isPushSubscribed) {
+    toast.info('You are already subscribed to push notifications!', {
+      position: "top-right",
+      autoClose: 3000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+    setIsLoadingNotification(false); // Stop loading on early exit
+    return;
+  }
+
+  try {
+    const pushSubscription = await swRegistration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
+    console.log('Push Subscription:', pushSubscription);
+
+    // Send subscription to your backend
+    const response = await fetch(`${API_BASE_URL}/subscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        customerId: session.user.id,
+        subscription: pushSubscription,
+      }),
+    });
+
+    if (response.ok) {
+      toast.success('Successfully subscribed to push notifications!', {
         position: "top-right",
         autoClose: 4000,
         hideProgressBar: false,
@@ -666,67 +712,96 @@ function urlB64ToUint8Array(base64String) {
         pauseOnHover: true,
         draggable: true,
       });
-      return;
-    }
-
-    if (isPushSubscribed) {
-      toast.info('You are already subscribed to push notifications!', {
+      setIsPushSubscribed(true);
+    } else {
+      const errorData = await response.json();
+      const errorMessage = `Failed to subscribe: ${errorData.error || response.statusText}`;
+      toast.error(errorMessage, {
         position: "top-right",
-        autoClose: 3000,
+        autoClose: 5000,
         hideProgressBar: false,
         closeOnClick: true,
         pauseOnHover: true,
         draggable: true,
       });
-      return;
+      await pushSubscription.unsubscribe();
+    }
+  } catch (error) {
+    console.error('Error subscribing to push:', error);
+    toast.error('An error occurred during subscription. Please try again.', {
+      position: "top-right",
+      autoClose: 5000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+  } finally {
+    setIsLoadingNotification(false); // Stop loading
+  }
+}, [swRegistration, session?.user?.id, isPushSubscribed, VAPID_PUBLIC_KEY, setIsPushSubscribed]);
+
+const unsubscribeUser = useCallback(async () => {
+  setIsLoadingNotification(true); // Start loading
+
+  if (!swRegistration || !session?.user?.id) {
+    const warningMessage = 'Cannot unsubscribe: Service Worker not registered or User not logged in.';
+    console.warn(warningMessage);
+    toast.warn('Unable to unsubscribe at the moment.', {
+      position: "top-right",
+      autoClose: 4000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+    setIsLoadingNotification(false); // Stop loading on early exit
+    return;
+  }
+
+  if (!isPushSubscribed) {
+    toast.info('You are not subscribed to push notifications.', {
+      position: "top-right",
+      autoClose: 3000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+    setIsLoadingNotification(false); // Stop loading on early exit
+    return;
+  }
+
+  try {
+    const subscription = await swRegistration.pushManager.getSubscription();
+    if (subscription) {
+      await subscription.unsubscribe();
+      console.log('Browser subscription removed.');
     }
 
-    try {
-      const pushSubscription = await swRegistration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
-      console.log('Push Subscription:', pushSubscription);
+    // Tell your backend to remove the subscription
+    const response = await fetch(`${API_BASE_URL}/unsubscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ customerId: session.user.id }),
+    });
 
-      // Send subscription to your backend
-      const response = await fetch(`${API_BASE_URL}/subscribe`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          customerId: session.user.id,
-          subscription: pushSubscription,
-        }),
+    if (response.ok) {
+      toast.success('Successfully unsubscribed from push notifications.', {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
       });
-
-      if (response.ok) {
-        toast.success('Successfully subscribed to push notifications!', {
-          position: "top-right",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        });
-        setIsPushSubscribed(true);
-      } else {
-        const errorData = await response.json();
-        const errorMessage = `Failed to subscribe: ${errorData.error || response.statusText}`;
-        toast.error(errorMessage, {
-          position: "top-right",
-          autoClose: 5000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        });
-        // Optionally, unsubscribe from browser if backend failed to store
-        await pushSubscription.unsubscribe();
-      }
-    } catch (error) {
-      console.error('Error subscribing to push:', error);
-      toast.error('An error occurred during subscription. Please try again.', {
+      setIsPushSubscribed(false);
+    } else {
+      const errorData = await response.json();
+      const errorMessage = `Failed to unsubscribe from backend: ${errorData.error || response.statusText}`;
+      toast.error(errorMessage, {
         position: "top-right",
         autoClose: 5000,
         hideProgressBar: false,
@@ -735,95 +810,28 @@ function urlB64ToUint8Array(base64String) {
         draggable: true,
       });
     }
-  }, [swRegistration, session?.user?.id, isPushSubscribed, VAPID_PUBLIC_KEY, setIsPushSubscribed]);
+  } catch (error) {
+    console.error('Error unsubscribing:', error);
+    toast.error('An error occurred during unsubscription. Please try again.', {
+      position: "top-right",
+      autoClose: 5000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+  } finally {
+    setIsLoadingNotification(false); // Stop loading
+  }
+}, [swRegistration, session?.user?.id, isPushSubscribed, setIsPushSubscribed]);
 
-  const unsubscribeUser = useCallback(async () => {
-    if (!swRegistration || !session?.user?.id) {
-      const warningMessage = 'Cannot unsubscribe: Service Worker not registered or User not logged in.';
-      console.warn(warningMessage);
-      toast.warn('Unable to unsubscribe at the moment.', {
-        position: "top-right",
-        autoClose: 4000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      });
-      return;
-    }
-
-    if (!isPushSubscribed) {
-      toast.info('You are not subscribed to push notifications.', {
-        position: "top-right",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      });
-      return;
-    }
-
-    try {
-      const subscription = await swRegistration.pushManager.getSubscription();
-      if (subscription) {
-        await subscription.unsubscribe();
-        console.log('Browser subscription removed.');
-      }
-
-      // Tell your backend to remove the subscription
-      const response = await fetch(`${API_BASE_URL}/unsubscribe`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ customerId: session.user.id }),
-      });
-
-      if (response.ok) {
-        toast.success('Successfully unsubscribed from push notifications.', {
-          position: "top-right",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        });
-        setIsPushSubscribed(false);
-      } else {
-        const errorData = await response.json();
-        const errorMessage = `Failed to unsubscribe from backend: ${errorData.error || response.statusText}`;
-        toast.error(errorMessage, {
-          position: "top-right",
-          autoClose: 5000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        });
-        // Optionally, re-subscribe in browser if backend failed to remove
-        // This is tricky, usually you want to ensure sync. User might need to retry.
-      }
-    } catch (error) {
-      console.error('Error unsubscribing:', error);
-      toast.error('An error occurred during unsubscription. Please try again.', {
-        position: "top-right",
-        autoClose: 5000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      });
-    }
-  }, [swRegistration, session?.user?.id, isPushSubscribed, setIsPushSubscribed]);
-
-  // Initial setup for service worker and subscription status
-  useEffect(() => {
-    registerServiceWorker(); // Register SW on component mount
-    if (session?.user?.id) {
-      checkSubscriptionStatus(); // Check backend status
-    }
-  }, [session?.user?.id, registerServiceWorker, checkSubscriptionStatus]);
+// Initial setup for service worker and subscription status
+useEffect(() => {
+  registerServiceWorker(); // Register SW on component mount
+  if (session?.user?.id) {
+    checkSubscriptionStatus(); // Check backend status
+  }
+}, [session?.user?.id, registerServiceWorker, checkSubscriptionStatus]);
 const fetchShops = useCallback(
   async (lat, long) => {
     if (shops.length === 0) {
@@ -1543,20 +1551,27 @@ const toggleStylistsExpansion = (shopId) => {
         {/* Notification Bell */}
         <div className="flex flex-col items-center mt-[-5px]">
           <button
-            onClick={isPushSubscribed ? unsubscribeUser : subscribeUser}
-            className={`p-2 rounded-full transition-colors duration-200 ${
-              isPushSubscribed
-                ? 'bg-green-500 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-            title={
-              isPushSubscribed
-                ? "Unsubscribe from Push Notifications"
-                : "Subscribe to Push Notifications"
-            }
-          >
-            <BellIcon className="h-4 w-4" />
-          </button>
+    onClick={isPushSubscribed ? unsubscribeUser : subscribeUser}
+    className={`p-2 rounded-full transition-colors duration-200 ${
+        isPushSubscribed
+            ? 'bg-green-500 text-white'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+    } ${isLoadingNotification ? 'cursor-not-allowed opacity-50' : ''}`}
+    title={
+        isLoadingNotification
+            ? "Processing..."
+            : isPushSubscribed
+            ? "Unsubscribe from Push Notifications"
+            : "Subscribe to Push Notifications"
+    }
+    disabled={isLoadingNotification}
+>
+    {isLoadingNotification ? (
+        <Loader className="animate-spin h-4 w-4 text-white" />
+    ) : (
+        <BellIcon className="h-4 w-4" />
+    )}
+</button>
           {/* <span className="text-[10px] text-white tracking-wider uppercase mt-1">Enable Notifications</span> */}
         </div>
  <div className="flex flex-col items-center mt-[-5px]">
