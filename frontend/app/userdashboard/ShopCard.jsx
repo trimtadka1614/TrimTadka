@@ -246,7 +246,7 @@ export default function ShopCard({
                 ).map((barber) => (
                   <div
                     key={barber.emp_id}
-                    className="bg-gray-200 p-3 rounded-lg"
+                    className="bg-gray-100 p-3 rounded-lg"
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center">
@@ -364,4 +364,5 @@ export default function ShopCard({
       </div>
     </div>
   );
+
 }
