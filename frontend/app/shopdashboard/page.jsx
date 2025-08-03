@@ -36,7 +36,8 @@ import { LogOut, Scissors,
     HourglassIcon,
     AlarmClockIcon,
     CheckCircle2Icon,
-    LoaderIcon } from "lucide-react";
+    LoaderIcon,
+  Loader } from "lucide-react";
 
 const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 import Image from 'next/image';
@@ -76,7 +77,7 @@ export default function ShopDashboard() {
 
     const [isShopPushSubscribed, setIsShopPushSubscribed] = useState(false);
     const [shopSwRegistration, setShopSwRegistration] = useState(null);
-
+const [isLoadingNotification, setIsLoadingNotification] = useState(false);
     // Derive shopId consistently from session.user.shop_id
     const shopId = session?.user?.shop_id;
     console.log("Shop id", shopId); // This will now correctly log the shopId
@@ -116,28 +117,28 @@ export default function ShopDashboard() {
     }, []); // No dependencies needed for this function itself
 
     // Function to check shop's push subscription status with the backend
-    const checkShopSubscriptionStatus = useCallback(async () => {
-      // Use the consistently derived shopId here
-      if (!shopId) {
-        console.log('No shopId available to check subscription status.');
-        return;
-      }
+   const checkShopSubscriptionStatus = useCallback(async () => {
+  if (!shopId) {
+    console.log('No shopId available to check subscription status.');
+    return;
+  }
 
-      try {
-        const response = await fetch(`${API_BASE_URL}/shops/${shopId}/subscription-status`);
-        if (response.ok) {
-          const data = await response.json();
-          setIsShopPushSubscribed(data.isSubscribed);
-        } else {
-          console.error('Failed to check shop subscription status:', response.statusText);
-        }
-      } catch (error) {
-        console.error('Error checking shop subscription status:', error);
-      }
-    }, [shopId]); // Dependency changed to shopId
+  try {
+    const response = await fetch(`${API_BASE_URL}/shops/${shopId}/subscription-status`);
+    if (response.ok) {
+      const data = await response.json();
+      setIsShopPushSubscribed(data.isSubscribed);
+    } else {
+      console.error('Failed to check shop subscription status:', response.statusText);
+    }
+  } catch (error) {
+    console.error('Error checking shop subscription status:', error);
+  }
+}, [shopId]);
 
 const subscribeShop = useCallback(async () => {
-  // Use the consistently derived shopId here
+  setIsLoadingNotification(true); // Start loading
+
   if (!shopSwRegistration || !shopId || !VAPID_PUBLIC_KEY) {
     const warningMessage = 'Cannot subscribe shop: Service Worker not registered, Shop not logged in, or VAPID Public Key missing.';
     console.warn(warningMessage);
@@ -149,6 +150,7 @@ const subscribeShop = useCallback(async () => {
       pauseOnHover: true,
       draggable: true,
     });
+    setIsLoadingNotification(false); // Stop loading on early exit
     return;
   }
 
@@ -161,6 +163,7 @@ const subscribeShop = useCallback(async () => {
       pauseOnHover: true,
       draggable: true,
     });
+    setIsLoadingNotification(false); // Stop loading on early exit
     return;
   }
 
@@ -217,12 +220,14 @@ const subscribeShop = useCallback(async () => {
       pauseOnHover: true,
       draggable: true,
     });
+  } finally {
+    setIsLoadingNotification(false); // Stop loading
   }
 }, [shopSwRegistration, shopId, isShopPushSubscribed]);
 
-// Function to unsubscribe the shop from push notifications
 const unsubscribeShop = useCallback(async () => {
-  // Use the consistently derived shopId here
+  setIsLoadingNotification(true); // Start loading
+
   if (!shopSwRegistration || !shopId) {
     const warningMessage = 'Cannot unsubscribe shop: Service Worker not registered or Shop not logged in.';
     console.warn(warningMessage);
@@ -234,6 +239,7 @@ const unsubscribeShop = useCallback(async () => {
       pauseOnHover: true,
       draggable: true,
     });
+    setIsLoadingNotification(false); // Stop loading on early exit
     return;
   }
 
@@ -246,6 +252,7 @@ const unsubscribeShop = useCallback(async () => {
       pauseOnHover: true,
       draggable: true,
     });
+    setIsLoadingNotification(false); // Stop loading on early exit
     return;
   }
 
@@ -286,7 +293,6 @@ const unsubscribeShop = useCallback(async () => {
         pauseOnHover: true,
         draggable: true,
       });
-      // Optionally, re-subscribe in browser if backend failed to remove
     }
   } catch (error) {
     console.error('Error unsubscribing shop:', error);
@@ -298,17 +304,20 @@ const unsubscribeShop = useCallback(async () => {
       pauseOnHover: true,
       draggable: true,
     });
+  } finally {
+    setIsLoadingNotification(false); // Stop loading
   }
 }, [shopSwRegistration, shopId, isShopPushSubscribed]);
 
-    // Initial setup for shop service worker and subscription status
-    useEffect(() => {
-      registerShopServiceWorker(); // Register SW on component mount for shops
-      // Only check subscription status if shopId is available
-      if (shopId) {
-        checkShopSubscriptionStatus(); 
-      }
-    }, [shopId, registerShopServiceWorker, checkShopSubscriptionStatus]); // Dependency changed to shopId
+// Initial setup for shop service worker and subscription status
+useEffect(() => {
+  registerShopServiceWorker(); // Register SW on component mount for shops
+  // Only check subscription status if shopId is available
+  if (shopId) {
+    checkShopSubscriptionStatus(); 
+  }
+}, [shopId, registerShopServiceWorker, checkShopSubscriptionStatus]);
+
         // Use a separate useEffect to fetch the shop's active status from the new API route
         useEffect(() => {
             const fetchShopStatus = async () => {
@@ -643,23 +652,28 @@ if (totalQueueMinutes > 0) {
 
         {/* Notification Bell */}
         {shopId && (
-          <div className="flex flex-col items-center space-y-1 mt-3">
-            <button
-              onClick={isShopPushSubscribed ? unsubscribeShop : subscribeShop}
-              className={`p-2 rounded-full transition-colors duration-200 ${
-                isShopPushSubscribed
-                  ? 'bg-green-500 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-              title={
-                isShopPushSubscribed
-                  ? "Unsubscribe from Push Notifications"
-                  : "Subscribe to Push Notifications"
-              }
-            >
-              <BellIcon className="h-4 w-4" />
-            </button>
-            <span className="text-[10px] text-white tracking-wider uppercase">Enable Notifications</span>
+          <div className="flex flex-col items-center space-y-1 mt-[-5px]">
+           <button
+  onClick={isShopPushSubscribed ? unsubscribeShop : subscribeShop}
+  className={`p-2 rounded-full transition-colors duration-200 ${
+    isShopPushSubscribed
+      ? 'bg-green-500 text-white'
+      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+  } ${isLoadingNotification ? 'cursor-not-allowed opacity-50' : ''}`}
+  title={
+    isShopPushSubscribed
+      ? "Unsubscribe from Push Notifications"
+      : "Subscribe to Push Notifications"
+  }
+  disabled={isLoadingNotification}
+>
+  {isLoadingNotification ? (
+    <Loader className="animate-spin h-4 w-4 text-white" />
+  ) : (
+    <BellIcon className="h-4 w-4" />
+  )}
+</button>
+            
           </div>
         )}
 
