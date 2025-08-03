@@ -604,6 +604,7 @@ export default function UserDashboard() {
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
   const [swRegistration, setSwRegistration] = useState(null);
  const [isLoadingNotification, setIsLoadingNotification] = useState(false);
+ const [isSigningOut, setIsSigningOut] = useState(false);
   // Function to convert VAPID public key from Base64 to Uint8Array
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY; 
 
@@ -1401,8 +1402,18 @@ const toggleStylistsExpansion = (shopId) => {
     }, 8000); // Message disappears after 8 seconds
   };
 
+   
 
-  
+    const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut({ callbackUrl: "/" });
+    } catch (error) {
+      console.error("Sign out failed:", error);
+      setIsSigningOut(false); // Re-enable if error occurs
+    }
+  };
+
   if (overallLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-[#f6c76d] to-[#cb3a1e] font-sans relative overflow-hidden">
@@ -1583,12 +1594,20 @@ const toggleStylistsExpansion = (shopId) => {
 
 
         {/* Logout Icon Only */}
-        <button
-          onClick={() => signOut({ callbackUrl: "/" })}
-          className="p-2 bg-[#cb3a1e] hover:bg-[#a62b16] rounded-4xl mt-[-7px]"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
+   <button
+      onClick={handleSignOut}
+      className={`p-2 bg-[#cb3a1e] hover:bg-[#a62b16] rounded-4xl mt-[-7px] ${
+        isSigningOut ? "cursor-not-allowed opacity-50" : ""
+      }`}
+      disabled={isSigningOut}
+      title={isSigningOut ? "Signing out..." : "Sign Out"}
+    >
+      {isSigningOut ? (
+        <Loader className="animate-spin h-4 w-4 text-white" />
+      ) : (
+        <LogOut className="h-4 w-4" />
+      )}
+    </button>
       </div>
     </div>
   </div>
@@ -2183,7 +2202,7 @@ const toggleStylistsExpansion = (shopId) => {
                           >
                             <div className="flex items-center space-x-3">
                               <UserCircleIcon className="h-6 w-6 text-gray-600" />
-                              <h4 className="text-lg font-semibold text-gray-900">
+                              <h4 className="text-sm font-semibold uppercase text-gray-900">
                                 {barber.emp_name}
                               </h4>
                               {barber.is_active ? ( // Only show status badge if barber is active
