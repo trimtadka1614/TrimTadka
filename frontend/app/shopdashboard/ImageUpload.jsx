@@ -11,6 +11,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
 const UploadShopImages = ({ shopId, isOpen, onClose }) => {
   const [images, setImages] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -113,7 +114,7 @@ const UploadShopImages = ({ shopId, isOpen, onClose }) => {
       toast.error('New file size must be under 2MB.');
       return;
     }
-    
+
     setUploading(true);
     try {
       await supabase.rpc('remove_image_url', {
@@ -133,7 +134,7 @@ const UploadShopImages = ({ shopId, isOpen, onClose }) => {
       const data = await res.json();
       if (!data.secure_url) throw new Error('Cloudinary upload failed');
       const imageUrl = data.secure_url;
-      
+
       await supabase.rpc('add_image_url', {
         shop_id: shopId,
         new_url: imageUrl,
@@ -153,8 +154,8 @@ const UploadShopImages = ({ shopId, isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
-    
-      
+
+
       <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 relative animate-scale-up">
         <button
           onClick={onClose}
@@ -209,22 +210,22 @@ const UploadShopImages = ({ shopId, isOpen, onClose }) => {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-60 overflow-y-auto p-2 rounded-md bg-gray-100">
               {images?.length > 0 ? (
                 images.map((url, index) => (
-                  <div key={index} className="relative group">
-                    <img src={url} alt={`shop image ${index}`} className="w-full h-28 object-cover rounded-md shadow-sm transition-transform duration-200 group-hover:scale-105" />
-                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-md">
-                      <div className="flex space-x-2">
-                        <label className="cursor-pointer text-white hover:text-[#cb3a1e] transition-colors duration-200">
-                          <PencilIcon className="h-6 w-6" />
+                  <div key={index} className="relative">
+                    <img src={url} alt={`shop image ${index}`} className="w-full h-28 object-cover rounded-md shadow-sm" />
+                    <div className="absolute top-2 left-2">
+                        <label className="bg-white/80 backdrop-blur-sm p-1 rounded-full border border-white cursor-pointer transition-colors duration-200">
+                          <PencilIcon className="h-4 w-4" />
                           <input
                             type="file"
                             onChange={(e) => handleUpdate(url, e.target.files[0])}
                             className="hidden"
                           />
                         </label>
-                        <button onClick={() => handleDelete(url)} className="text-white hover:text-red-500 transition-colors duration-200">
-                          <TrashIcon className="h-6 w-6" />
-                        </button>
-                      </div>
+                    </div>
+                    <div className="absolute top-2 right-2">
+                      <button onClick={() => handleDelete(url)} className="bg-white/80 backdrop-blur-sm p-1 rounded-full border border-white text-red-500 transition-colors duration-200">
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 ))
@@ -233,7 +234,7 @@ const UploadShopImages = ({ shopId, isOpen, onClose }) => {
               )}
             </div>
           </div>
-          
+
           <div className="flex justify-end border-t border-gray-200 pt-4 mt-6">
             <button
               type="button"
