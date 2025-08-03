@@ -154,8 +154,6 @@ const UploadShopImages = ({ shopId, isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
-
-
       <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 relative animate-scale-up">
         <button
           onClick={onClose}
@@ -212,18 +210,16 @@ const UploadShopImages = ({ shopId, isOpen, onClose }) => {
                 images.map((url, index) => (
                   <div key={index} className="relative">
                     <img src={url} alt={`shop image ${index}`} className="w-full h-28 object-cover rounded-md shadow-sm" />
-                    <div className="absolute top-2 left-2">
-                        <label className="bg-white/80 backdrop-blur-sm p-1 rounded-full border border-white cursor-pointer transition-colors duration-200">
-                          <PencilIcon className="h-4 w-4" />
-                          <input
-                            type="file"
-                            onChange={(e) => handleUpdate(url, e.target.files[0])}
-                            className="hidden"
-                          />
-                        </label>
-                    </div>
-                    <div className="absolute top-2 right-2">
-                      <button onClick={() => handleDelete(url)} className="bg-white/80 backdrop-blur-sm p-1 rounded-full border border-white text-red-500 transition-colors duration-200">
+                    <div className="absolute top-2 right-2 flex flex-col space-y-2">
+                      <label className="bg-gray-900/60 backdrop-blur-sm p-1 rounded-full border border-white cursor-pointer transition-colors duration-200">
+                        <PencilIcon className="h-4 w-4 text-white" />
+                        <input
+                          type="file"
+                          onChange={(e) => handleUpdate(url, e.target.files[0])}
+                          className="hidden"
+                        />
+                      </label>
+                      <button onClick={() => handleDelete(url)} className="bg-gray-900/60 backdrop-blur-sm p-1 rounded-full border border-white text-red-400 transition-colors duration-200">
                         <TrashIcon className="h-4 w-4" />
                       </button>
                     </div>
