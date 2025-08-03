@@ -29,6 +29,7 @@ import {
     FunnelIcon as FilterIcon, // Renamed for Heroicons v2
     PhoneIcon,
     TagIcon,
+    PhotoIcon,
     PlusCircleIcon // Added for the new booking button
 } from '@heroicons/react/24/solid'; // Updated import path for Heroicons v2 solid icons
 import { LogOut, Scissors,
@@ -48,6 +49,7 @@ import ShopEmployeesTable from './ShopEmplyoeesTable';
 import ShopStatusToggle from './ShopStatusToggle';
 import CancelBookingModal from './CancelBookingModal';
 import AddWalkinBookingModal from './AddWalkinBookingModal'; // Import the new modal
+import UploadShopImages from './ImageUpload';
 
 
 export default function ShopDashboard() {
@@ -74,7 +76,7 @@ export default function ShopDashboard() {
     // Initialize shopIsActive with null, and fetch it from the API
     const [shopIsActive, setShopIsActive] = useState(null);
     const [loadingShopStatus, setLoadingShopStatus] = useState(true);
-
+ const [showUploadShopImages, setShowUploadShopImages] = useState(false);
     const [isShopPushSubscribed, setIsShopPushSubscribed] = useState(false);
     const [shopSwRegistration, setShopSwRegistration] = useState(null);
 const [isLoadingNotification, setIsLoadingNotification] = useState(false);
@@ -779,42 +781,50 @@ if (totalQueueMinutes > 0) {
     <span>Add Service</span>
   </button>
 
-  {/* Second Row: Walk-in button, spans both columns */}
+  {/* Second Row: Two buttons, side by side */}
   <button 
     onClick={() => setShowAddWalkinBookingModal(true)}
-    className="col-span-2 bg-[#cb3a1e] text-white p-2 rounded-lg tracking-wider uppercase text-[14px] hover:bg-[#b8341a] transition-colors duration-300 flex items-center justify-center space-x-2"
+    className="bg-[#cb3a1e] text-white p-2 rounded-lg tracking-wider uppercase text-[14px] hover:bg-[#b8341a] transition-colors duration-300 flex items-center justify-center space-x-2"
   >
     <PlusCircleIcon className="h-5 w-5" />
     <span>Walk-in Booking</span>
   </button>
+
+  {/* New button to open the UploadShopImages modal */}
+  <button
+    onClick={() => setShowUploadShopImages(true)}
+    className="bg-[#cb3a1e] text-white p-2 rounded-lg tracking-wider uppercase text-[14px] hover:bg-[#b8341a] transition-colors duration-300 flex items-center justify-center space-x-2"
+  >
+    <PhotoIcon className="h-5 w-5" />
+    <span>Add Shop Images</span>
+  </button>
 </div>
 
-       
+{/* New state for the UploadShopImages modal */}
+<UploadShopImages
+  shopId={shopId}
+  isOpen={showUploadShopImages}
+  onClose={() => setShowUploadShopImages(false)}
+/>
 
-        {/* Modals */}
-        <RegisterStylistModal
-            shopId={shopId}
-            isOpen={showRegisterStylistModal}
-            onClose={() => setShowRegisterStylistModal(false)}
-            onStylistRegistered={fetchBookings} // Refresh bookings or relevant data after registration
-        />
-
-        <AddServiceModal
-            isOpen={showAddServiceModal}
-            onClose={() => setShowAddServiceModal(false)}
-            onServiceAdded={() => {
-                // You might want to refresh services list in RegisterStylistModal if it's open
-                // Or just show a success message. For now, no direct refresh needed on dashboard.
-            }}
-        />
-
-        {/* New Walk-in Booking Modal */}
-        <AddWalkinBookingModal
-            shopId={shopId}
-            isOpen={showAddWalkinBookingModal}
-            onClose={() => setShowAddWalkinBookingModal(false)}
-            onBookingSuccess={fetchBookings} // Refresh bookings after a successful walk-in booking
-        />
+{/* Other modals remain the same */}
+<RegisterStylistModal
+    shopId={shopId}
+    isOpen={showRegisterStylistModal}
+    onClose={() => setShowRegisterStylistModal(false)}
+    onStylistRegistered={fetchBookings}
+/>
+<AddServiceModal
+    isOpen={showAddServiceModal}
+    onClose={() => setShowAddServiceModal(false)}
+    onServiceAdded={() => {}}
+/>
+<AddWalkinBookingModal
+    shopId={shopId}
+    isOpen={showAddWalkinBookingModal}
+    onClose={() => setShowAddWalkinBookingModal(false)}
+    onBookingSuccess={fetchBookings}
+/>
 
         {/* 2. Analytics Summary Cards */}
    <section className="mb-10 p-6 sm:p-6 lg:p-8 mt-[-40px]">
