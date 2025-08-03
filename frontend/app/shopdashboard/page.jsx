@@ -78,6 +78,9 @@ export default function ShopDashboard() {
     const [isShopPushSubscribed, setIsShopPushSubscribed] = useState(false);
     const [shopSwRegistration, setShopSwRegistration] = useState(null);
 const [isLoadingNotification, setIsLoadingNotification] = useState(false);
+ const [isSigningOut, setIsSigningOut] = useState(false);
+
+ 
     // Derive shopId consistently from session.user.shop_id
     const shopId = session?.user?.shop_id;
     console.log("Shop id", shopId); // This will now correctly log the shopId
@@ -448,6 +451,15 @@ useEffect(() => {
     const handlePageChange = (pageNumber) => {
         setCurrentPage(pageNumber);
     };
+     const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut({ callbackUrl: "/" });
+    } catch (error) {
+      console.error("Sign out failed:", error);
+      setIsSigningOut(false); // Re-enable if error occurs
+    }
+  };
 
     const resetFilters = () => {
         setFilterStatus('all');
@@ -678,13 +690,20 @@ if (totalQueueMinutes > 0) {
         )}
 
         {/* Logout Icon */}
-        <button
-          onClick={() => signOut({ callbackUrl: '/' })}
-          className="p-2 bg-[#cb3a1e] rounded-4xl hover:bg-[#a62b16] transition-colors duration-200 mt-[-7px]"
-          title="Logout"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
+           <button
+      onClick={handleSignOut}
+      className={`p-2 bg-[#cb3a1e] hover:bg-[#a62b16] rounded-4xl mt-[-7px] ${
+        isSigningOut ? "cursor-not-allowed opacity-50" : ""
+      }`}
+      disabled={isSigningOut}
+      title={isSigningOut ? "Signing out..." : "Sign Out"}
+    >
+      {isSigningOut ? (
+        <Loader className="animate-spin h-4 w-4 text-white" />
+      ) : (
+        <LogOut className="h-4 w-4" />
+      )}
+    </button>
       </div>
     </div>
   </div>
