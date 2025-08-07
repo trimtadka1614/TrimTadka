@@ -500,42 +500,41 @@ app.post('/signin_customer', async (req, res) => {
 
 // 3. Shop Sign-Up Route
 app.post('/signup_shop', async (req, res) => {
-    const { shop_name, lat, long, address, ph_number, password } = req.body;
+    // Destructure new fields: gender and type
+    const { shop_name, lat, long, address, ph_number, password, gender, type } = req.body;
 
-    // Basic validation for required fields
-    if (!shop_name || !ph_number || !password) {
-        return res.status(400).json({ message: 'Shop name, phone number, and password are required.' });
+    // Basic validation for required fields, including new ones
+    if (!shop_name || !ph_number || !password || !gender || !type) {
+        return res.status(400).json({ message: 'Shop name, phone number, password, gender, and type are required.' });
     }
-
+    
     try {
         // Hash the password for security
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Check if a shop with this phone number already exists to prevent duplicates
+        // Check if a shop with this phone number already exists
         const checkExisting = await pool.query(
             'SELECT shop_id FROM shops WHERE ph_number = $1',
             [ph_number]
         );
 
         if (checkExisting.rows.length > 0) {
-            // If a shop with the phone number exists, return a conflict error
             return res.status(409).json({ message: 'Shop with this phone number already exists.' });
         }
 
-        // Insert new shop into the database, explicitly setting is_active to TRUE
-        // The 'is_active' column is set to true by default for new sign-ups.
+        // Insert new shop into the database, including the new gender and type fields
         const result = await pool.query(
-            'INSERT INTO shops (shop_name, lat, long, address, ph_number, password, is_active) VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING shop_id, shop_name, ph_number, is_active',
-            [shop_name, lat, long, address, ph_number, hashedPassword]
+            'INSERT INTO shops (shop_name, lat, long, address, ph_number, password, is_active, gender, type) VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $8) RETURNING shop_id, shop_name, ph_number, is_active, gender, type',
+            [shop_name, lat, long, address, ph_number, hashedPassword, gender, type]
         );
 
         const newShop = result.rows[0];
 
-        // Generate a JWT token for the newly signed-up shop for authentication
+        // Generate a JWT token for the newly signed-up shop
         const token = jwt.sign(
             { id: newShop.shop_id, role: 'shop', phone: newShop.ph_number },
             JWT_SECRET,
-            { expiresIn: '24h' } // Token expires in 24 hours
+            { expiresIn: '24h' }
         );
 
         // Respond with success message, new shop details, and the JWT token
@@ -545,15 +544,15 @@ app.post('/signup_shop', async (req, res) => {
                 id: newShop.shop_id,
                 name: newShop.shop_name,
                 phone: newShop.ph_number,
-                is_active: newShop.is_active // Reflects the default true status
+                is_active: newShop.is_active,
+                gender: newShop.gender,
+                type: newShop.type
             },
             token
         });
 
     } catch (error) {
-        // Log any errors that occur during the sign-up process
         console.error('Error during shop sign-up:', error);
-        // Return a generic internal server error
         res.status(500).json({ message: 'Internal server error during sign-up.' });
     }
 });
@@ -699,7 +698,7 @@ app.get('/shops/simple', async (req, res) => {
 
     try {
         const shopsQuery = `
-            SELECT 
+            SELECT
                 s.shop_id,
                 s.shop_name,
                 s.lat,
@@ -707,14 +706,25 @@ app.get('/shops/simple', async (req, res) => {
                 s.address,
                 s.ph_number,
                 s.is_active AS shop_is_active,
-                s.image_url, -- Added image_url
+                s.image_url,
+                s.is_subscribed,        -- Added
+                s.ads,                  -- Added
+                s.banners,              -- Added
+                s.offers,               -- Added
+                s.top_rated,            -- Added
+                s.wallet_id,            -- Added
+                s.type,                 -- Added
+                s.bookings_completed,   -- Added
+                s.credits,              -- Added
+                s.gender,               -- Added
+                s.monthly_bookings_count, -- Added
                 e.emp_id,
                 e.emp_name,
                 e.is_active AS emp_is_active,
                 COALESCE(
                     json_agg(
-                        CASE 
-                            WHEN srv.service_id IS NOT NULL 
+                        CASE
+                            WHEN srv.service_id IS NOT NULL
                             THEN json_build_object(
                                 'service_id', srv.service_id,
                                 'service_name', srv.service_name,
@@ -729,15 +739,18 @@ app.get('/shops/simple', async (req, res) => {
             LEFT JOIN employees e ON s.shop_id = e.shop_id
             LEFT JOIN employee_services es ON e.emp_id = es.emp_id
             LEFT JOIN services srv ON es.service_id = srv.service_id
-            GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, s.image_url, e.emp_id, e.emp_name, e.is_active
+            GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, s.image_url,
+                     s.is_subscribed, s.ads, s.banners, s.offers, s.top_rated, s.wallet_id, s.type,
+                     s.bookings_completed, s.credits, s.gender, s.monthly_bookings_count, -- Added to GROUP BY
+                     e.emp_id, e.emp_name, e.is_active
             ORDER BY s.shop_name, e.emp_name
         `;
 
         const shopsResult = await pool.query(shopsQuery);
-        
+
         const currentTime = dayjs().utc().toDate();
         const bookingsQuery = `
-            SELECT 
+            SELECT
                 b.booking_id,
                 b.shop_id,
                 b.emp_id,
@@ -754,12 +767,12 @@ app.get('/shops/simple', async (req, res) => {
             AND b.end_time > $1
             ORDER BY b.join_time ASC
         `;
-        
+
         const bookingsResult = await pool.query(bookingsQuery, [currentTime]);
         const bookings = bookingsResult.rows;
 
         const shopsMap = new Map();
-        
+
         shopsResult.rows.forEach(row => {
             if (!shopsMap.has(row.shop_id)) {
                 shopsMap.set(row.shop_id, {
@@ -767,7 +780,18 @@ app.get('/shops/simple', async (req, res) => {
                     shop_name: row.shop_name,
                     ph_number: row.ph_number,
                     is_active: row.shop_is_active,
-                    image_url: row.image_url, // Added image_url
+                    image_url: row.image_url,
+                    is_subscribed: row.is_subscribed,        // Added
+                    ads: row.ads,                            // Added
+                    banners: row.banners,                    // Added
+                    offers: row.offers,                      // Added
+                    top_rated: row.top_rated,                // Added
+                    wallet_id: row.wallet_id,                // Added
+                    type: row.type,                          // Added
+                    bookings_completed: row.bookings_completed, // Added
+                    credits: row.credits,                    // Added
+                    gender: row.gender,                      // Added
+                    monthly_bookings_count: row.monthly_bookings_count, // Added
                     location: {
                         address: row.address,
                         coordinates: {
@@ -778,26 +802,26 @@ app.get('/shops/simple', async (req, res) => {
                     barbers: []
                 });
             }
-            
+
             const shop = shopsMap.get(row.shop_id);
-            
+
             if (row.emp_id && !shop.barbers.some(b => b.emp_id === row.emp_id)) {
                 const empBookings = bookings.filter(b => b.emp_id === row.emp_id);
-                
+
                 const totalInQueue = empBookings.length;
                 const inServiceBooking = empBookings.find(b => b.status === 'in_service');
-                
+
                 let finalEstimatedWaitTime = 0;
                 let lastBookingEndTime = currentTime;
-                
+
                 const sortedActiveBookings = empBookings
                     .sort((a, b) => dayjs.utc(a.join_time).toDate().getTime() - dayjs.utc(b.join_time).toDate().getTime());
-                    
+
                 for (let i = 0; i < sortedActiveBookings.length; i++) {
                     const booking = sortedActiveBookings[i];
                     const bookingJoinTime = dayjs.utc(booking.join_time).toDate();
                     const bookingEndTime = dayjs.utc(booking.end_time).toDate();
-                    
+
                     if (booking.status === 'in_service') {
                         lastBookingEndTime = new Date(Math.max(lastBookingEndTime.getTime(), bookingEndTime.getTime() + 5 * 60000));
                     } else if (booking.status === 'booked') {
@@ -810,14 +834,14 @@ app.get('/shops/simple', async (req, res) => {
 
                 let customerBooking = null;
                 let customerQueuePosition = null;
-                
+
                 if (customer_id) {
-                    customerBooking = empBookings.find(b => 
+                    customerBooking = empBookings.find(b =>
                         b.customer_id === parseInt(customer_id) && b.status !== 'completed' && b.status !== 'cancelled'
                     );
-                    
+
                     if (customerBooking) {
-                        customerQueuePosition = sortedActiveBookings.findIndex(b => 
+                        customerQueuePosition = sortedActiveBookings.findIndex(b =>
                             b.booking_id === customerBooking.booking_id
                         ) + 1;
                     }
@@ -832,8 +856,8 @@ app.get('/shops/simple', async (req, res) => {
                         total_people_in_queue: totalInQueue,
                         queue_position: totalInQueue + 1,
                         estimated_wait_time: finalEstimatedWaitTime > 0 ? `${finalEstimatedWaitTime} mins` : "No wait",
-                        current_status: inServiceBooking ? 
-                            `Serving ${inServiceBooking.customer_name}` : 
+                        current_status: inServiceBooking ?
+                            `Serving ${inServiceBooking.customer_name}` :
                             (totalInQueue > 0 ? "Ready for next customer" : "Available"),
                         ...(customerQueuePosition !== null && { customer_queue_position: customerQueuePosition })
                     }
@@ -842,7 +866,7 @@ app.get('/shops/simple', async (req, res) => {
                 if (customerBooking) {
                     const joinTimeIST = dayjs.utc(customerBooking.join_time).tz('Asia/Kolkata');
                     const endTimeIST = dayjs.utc(customerBooking.end_time).tz('Asia/Kolkata');
-                    
+
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
                         join_time: joinTimeIST.format('HH:mm'),
@@ -858,7 +882,7 @@ app.get('/shops/simple', async (req, res) => {
         });
 
         const shops = Array.from(shopsMap.values());
-        
+
         if (lat && long) {
             const userLat = parseFloat(lat);
             const userLong = parseFloat(long);
@@ -869,7 +893,7 @@ app.get('/shops/simple', async (req, res) => {
 
                 if (shopLat && shopLong) {
                     const url = `https://api.tomtom.com/routing/1/calculateRoute/${userLat},${userLong}:${shopLat},${shopLong}/json?key=${TOMTOM_API_KEY}&routeType=fastest&travelMode=car&traffic=true`;
-                    
+
                     try {
                         const response = await axios.get(url);
                         const data = response.data;
@@ -890,7 +914,7 @@ app.get('/shops/simple', async (req, res) => {
             });
 
             await Promise.all(distancePromises);
-            
+
             shops.sort((a, b) => {
                 const distA = parseFloat(a.location.distance_from_you) || Infinity;
                 const distB = parseFloat(b.location.distance_from_you) || Infinity;
@@ -908,7 +932,7 @@ app.get('/shops/simple', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching shops with barber details:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Server error while fetching shops with barber details',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
@@ -916,6 +940,9 @@ app.get('/shops/simple', async (req, res) => {
 });
 
 
+// --- POST /shop_status ---
+// Fetches detailed status for a specific shop, including its barbers, queue info,
+// and now all shop details like subscription, perks, etc.
 app.post('/shop_status', async (req, res) => {
     const { customer_id, lat, long, shop_id } = req.body;
     const TOMTOM_API_KEY = '5Q9lucwONUWC0yrXWheR16oZtjdBxE0H'; // Replace with your actual API key
@@ -927,7 +954,7 @@ app.post('/shop_status', async (req, res) => {
         const parsedShopId = parseInt(shop_id);
 
         let shopsQuery = `
-            SELECT 
+            SELECT
                 s.shop_id,
                 s.shop_name,
                 s.lat,
@@ -935,14 +962,25 @@ app.post('/shop_status', async (req, res) => {
                 s.address,
                 s.ph_number,
                 s.is_active AS shop_is_active,
-                s.image_url, -- Added image_url
+                s.image_url,
+                s.is_subscribed,        -- Added
+                s.ads,                  -- Added
+                s.banners,              -- Added
+                s.offers,               -- Added
+                s.top_rated,            -- Added
+                s.wallet_id,            -- Added
+                s.type,                 -- Added
+                s.bookings_completed,   -- Added
+                s.credits,              -- Added
+                s.gender,               -- Added
+                s.monthly_bookings_count, -- Added
                 e.emp_id,
                 e.emp_name,
                 e.is_active AS emp_is_active,
                 COALESCE(
                     json_agg(
-                        CASE 
-                            WHEN srv.service_id IS NOT NULL 
+                        CASE
+                            WHEN srv.service_id IS NOT NULL
                             THEN json_build_object(
                                 'service_id', srv.service_id,
                                 'service_name', srv.service_name,
@@ -958,7 +996,10 @@ app.post('/shop_status', async (req, res) => {
             LEFT JOIN employee_services es ON e.emp_id = es.emp_id
             LEFT JOIN services srv ON es.service_id = srv.service_id
             WHERE s.shop_id = $1
-            GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, s.image_url, e.emp_id, e.emp_name, e.is_active
+            GROUP BY s.shop_id, s.shop_name, s.lat, s.long, s.address, s.ph_number, s.is_active, s.image_url,
+                     s.is_subscribed, s.ads, s.banners, s.offers, s.top_rated, s.wallet_id, s.type,
+                     s.bookings_completed, s.credits, s.gender, s.monthly_bookings_count, -- Added to GROUP BY
+                     e.emp_id, e.emp_name, e.is_active
             ORDER BY s.shop_name, e.emp_name
         `;
 
@@ -967,10 +1008,10 @@ app.post('/shop_status', async (req, res) => {
         if (shopsResult.rows.length === 0) {
             return res.status(404).json({ message: 'Shop not found.' });
         }
-        
+
         const currentTime = dayjs().utc().toDate();
         const bookingsQuery = `
-            SELECT 
+            SELECT
                 b.booking_id,
                 b.shop_id,
                 b.emp_id,
@@ -988,12 +1029,12 @@ app.post('/shop_status', async (req, res) => {
             AND b.end_time > $2
             ORDER BY b.join_time ASC
         `;
-        
+
         const bookingsResult = await pool.query(bookingsQuery, [parsedShopId, currentTime]);
         const bookings = bookingsResult.rows;
 
         const shopsMap = new Map();
-        
+
         shopsResult.rows.forEach(row => {
             if (!shopsMap.has(row.shop_id)) {
                 shopsMap.set(row.shop_id, {
@@ -1001,7 +1042,18 @@ app.post('/shop_status', async (req, res) => {
                     shop_name: row.shop_name,
                     ph_number: row.ph_number,
                     is_active: row.shop_is_active,
-                    image_url: row.image_url, // Added image_url
+                    image_url: row.image_url,
+                    is_subscribed: row.is_subscribed,        // Added
+                    ads: row.ads,                            // Added
+                    banners: row.banners,                    // Added
+                    offers: row.offers,                      // Added
+                    top_rated: row.top_rated,                // Added
+                    wallet_id: row.wallet_id,                // Added
+                    type: row.type,                          // Added
+                    bookings_completed: row.bookings_completed, // Added
+                    credits: row.credits,                    // Added
+                    gender: row.gender,                      // Added
+                    monthly_bookings_count: row.monthly_bookings_count, // Added
                     location: {
                         address: row.address,
                         coordinates: {
@@ -1012,15 +1064,15 @@ app.post('/shop_status', async (req, res) => {
                     barbers: []
                 });
             }
-            
+
             const shop = shopsMap.get(row.shop_id);
-            
+
             if (row.emp_id && !shop.barbers.some(b => b.emp_id === row.emp_id)) {
                 const empBookings = bookings.filter(b => b.emp_id === row.emp_id);
-                
+
                 const totalInQueue = empBookings.length;
                 const inServiceBooking = empBookings.find(b => b.status === 'in_service');
-                
+
                 let finalEstimatedWaitTime = 0;
                 let lastBookingEndTime = currentTime;
 
@@ -1044,14 +1096,14 @@ app.post('/shop_status', async (req, res) => {
 
                 let customerBooking = null;
                 let customerQueuePosition = null;
-                
+
                 if (customer_id) {
-                    customerBooking = empBookings.find(b => 
+                    customerBooking = empBookings.find(b =>
                         b.customer_id === parseInt(customer_id) && b.status !== 'completed' && b.status !== 'cancelled'
                     );
-                    
+
                     if (customerBooking) {
-                        customerQueuePosition = sortedActiveBookings.findIndex(b => 
+                        customerQueuePosition = sortedActiveBookings.findIndex(b =>
                             b.booking_id === customerBooking.booking_id
                         ) + 1;
                     }
@@ -1066,8 +1118,8 @@ app.post('/shop_status', async (req, res) => {
                         total_people_in_queue: totalInQueue,
                         queue_position: totalInQueue + 1,
                         estimated_wait_time: finalEstimatedWaitTime > 0 ? `${finalEstimatedWaitTime} mins` : "No wait",
-                        current_status: inServiceBooking ? 
-                            `Serving ${inServiceBooking.customer_name}` : 
+                        current_status: inServiceBooking ?
+                            `Serving ${inServiceBooking.customer_name}` :
                             (totalInQueue > 0 ? "Ready for next customer" : "Available"),
                         ...(customerQueuePosition !== null && { customer_queue_position: customerQueuePosition })
                     }
@@ -1076,7 +1128,7 @@ app.post('/shop_status', async (req, res) => {
                 if (customerBooking) {
                     const joinTimeIST = dayjs.utc(customerBooking.join_time).tz('Asia/Kolkata');
                     const endTimeIST = dayjs.utc(customerBooking.end_time).tz('Asia/Kolkata');
-                    
+
                     barber.your_booking = {
                         booking_id: customerBooking.booking_id,
                         join_time: joinTimeIST.format('HH:mm'),
@@ -1086,12 +1138,13 @@ app.post('/shop_status', async (req, res) => {
                         services: customerBooking.service_type
                     };
                 }
+
                 shop.barbers.push(barber);
             }
         });
 
         const shops = Array.from(shopsMap.values());
-        
+
         if (lat && long) {
             const userLat = parseFloat(lat);
             const userLong = parseFloat(long);
@@ -1102,7 +1155,7 @@ app.post('/shop_status', async (req, res) => {
 
                 if (shopLat && shopLong) {
                     const url = `https://api.tomtom.com/routing/1/calculateRoute/${userLat},${userLong}:${shopLat},${shopLong}/json?key=${TOMTOM_API_KEY}&routeType=fastest&travelMode=car&traffic=true`;
-                    
+
                     try {
                         const response = await axios.get(url);
                         const data = response.data;
@@ -1123,7 +1176,7 @@ app.post('/shop_status', async (req, res) => {
             });
 
             await Promise.all(distancePromises);
-            
+
             shops.sort((a, b) => {
                 const distA = parseFloat(a.location.distance_from_you) || Infinity;
                 const distB = parseFloat(b.location.distance_from_you) || Infinity;
@@ -1141,12 +1194,13 @@ app.post('/shop_status', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching shops with barber details:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Server error while fetching shops with barber details',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });
+
 
 // Register a service (for barber shops)
 app.post('/register_service', async (req, res) => {
@@ -1647,74 +1701,7 @@ setInterval(updateBookingStatuses, 60000); // Run every 60 seconds
 
 
 
-app.post('/create-razorpay-order', async (req, res) => {
-    try {
-        const { amount } = req.body;
-        const options = {
-            amount: amount, // Amount is in currency subunits (e.g., 300 for ₹3)
-            currency: 'INR',
-            receipt: 'receipt_order_' + Math.random().toString(36).substring(7),
-        };
 
-        const order = await razorpay.orders.create(options);
-        console.log("Razorpay Order Created:", order);
-        res.status(200).json(order);
-    } catch (error) {
-        console.error('Error creating Razorpay order:', error);
-        res.status(500).json({ error: 'Failed to create Razorpay order' });
-    }
-});
-
-app.put('/customers/:customer_id/sync-completed-bookings', async (req, res) => {
-  const { customer_id } = req.params;
-
-  if (!customer_id || isNaN(parseInt(customer_id))) {
-    return res.status(400).json({ error: 'Valid customer_id is required' });
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // 1. Count the number of completed bookings for the customer
-    const countResult = await client.query(
-      `SELECT COUNT(*) FROM bookings WHERE customer_id = $1 AND status = 'completed'`,
-      [customer_id]
-    );
-    const completedBookingsCount = parseInt(countResult.rows[0].count);
-
-    // 2. Update the customer's record with the new count
-    const updateCustomerQuery = `
-      UPDATE customers
-      SET bookings_completed = $1
-      WHERE customer_id = $2
-      RETURNING *;
-    `;
-    const updateResult = await client.query(updateCustomerQuery, [completedBookingsCount, customer_id]);
-
-    if (updateResult.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Customer not found' });
-    }
-
-    await client.query('COMMIT');
-
-    res.status(200).json({
-      message: `Bookings completed count for customer ID ${customer_id} updated to ${completedBookingsCount}`,
-      customer: updateResult.rows[0],
-    });
-
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Failed to sync completed bookings count:', err.message);
-    res.status(500).json({
-      error: 'Failed to sync completed bookings count',
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
-  } finally {
-    client.release();
-  }
-});
 
 
 app.get('/customers/:customer_id/wallet', async (req, res) => {
@@ -1758,110 +1745,265 @@ app.get('/customers/:customer_id/wallet', async (req, res) => {
   }
 });
 
+app.put('/customers/:customer_id/sync-completed-bookings', async (req, res) => {
+  const { customer_id } = req.params;
 
-app.post('/api/check-cashback', async (req, res) => {
-    const { customer_id } = req.body;
+  if (!customer_id || isNaN(parseInt(customer_id))) {
+    return res.status(400).json({ error: 'VALID CUSTOMER_ID IS REQUIRED' });
+  }
 
-    // 1. Validate the customer ID
-    if (!customer_id || isNaN(parseInt(customer_id))) {
-        return res.status(400).json({ error: 'A valid customer_id is required in the request body.' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Count the number of completed bookings for the customer.
+    const countResult = await client.query(
+      `SELECT COUNT(*) FROM bookings WHERE customer_id = $1 AND status = 'completed'`,
+      [customer_id]
+    );
+    const completedBookingsCount = parseInt(countResult.rows[0].count);
+
+    // 2. Update the customer's record with the new count.
+    const updateCustomerQuery = `
+      UPDATE customers
+      SET bookings_completed = $1
+      WHERE customer_id = $2
+      RETURNING *;
+    `;
+    const updateResult = await client.query(updateCustomerQuery, [completedBookingsCount, customer_id]);
+
+    if (updateResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'CUSTOMER NOT FOUND' });
     }
 
-    const client = await pool.connect();
+    await client.query('COMMIT');
 
-    try {
-        await client.query('BEGIN');
+    res.status(200).json({
+      message: `BOOKINGS COMPLETED COUNT FOR CUSTOMER ID ${customer_id} UPDATED TO ${completedBookingsCount}`,
+      customer: updateResult.rows[0],
+    });
 
-        // 2. Fetch customer data. Use FOR UPDATE to lock the row and prevent race conditions.
-        const customerResult = await client.query(
-            `SELECT customer_id, bookings_completed, wallet_id FROM customers WHERE customer_id = $1 FOR UPDATE`,
-            [customer_id]
-        );
-
-        const customer = customerResult.rows[0];
-
-        // 3. Check if the customer exists
-        if (!customer) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ error: `Customer with ID ${customer_id} not found.` });
-        }
-        
-        // 4. CHECK IF THE CASHBACK CONDITION IS MET.
-        // The condition is that bookings_completed is exactly 2.
-        if (customer.bookings_completed !== 2) {
-            await client.query('COMMIT');
-            return res.status(200).json({
-                message: `Bookings completed is not 2. No cashback awarded.`,
-                customer_data: customer,
-            });
-        }
-        
-        // 5. ATOMICITY FIX: Check one more time inside the transaction block to ensure no other request has already added cashback.
-        // This is the key change that prevents duplicate entries.
-        const existingCashbackResult = await client.query(
-            `SELECT id FROM wallet_transactions WHERE customer_id = $1 AND type = 'cashback' AND status = 'Received' LIMIT 1`,
-            [customer_id]
-        );
-        const cashbackAlreadyAwarded = existingCashbackResult.rows.length > 0;
-        
-        if (cashbackAlreadyAwarded) {
-            await client.query('COMMIT');
-            return res.status(200).json({
-                message: 'Cashback has already been awarded to this customer.',
-                customer_data: customer,
-            });
-        }
-        
-        // If we reach this point, the conditions are met and no cashback has been awarded.
-        const cashbackAmount = 15;
-        console.log(`Customer ${customer_id} is eligible for a ₹${cashbackAmount} cashback.`);
-
-        try {
-            // 6. Fetch the customer's last wallet balance to calculate the new balance.
-            const balanceResult = await client.query(
-                `SELECT balance FROM wallet_transactions WHERE customer_id = $1 ORDER BY id DESC LIMIT 1`,
-                [customer_id]
-            );
-            
-            const lastBalance = balanceResult.rows[0] ? parseFloat(balanceResult.rows[0].balance) : 0;
-            const newBalance = lastBalance + cashbackAmount;
-
-            // 7. Insert the 'Received' cashback transaction into the wallet_transactions table.
-            await client.query(
-                `INSERT INTO wallet_transactions (customer_id, wallet_id, booking_id, amount, type, status, balance, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [customer.customer_id, customer.wallet_id, null, cashbackAmount, 'cashback', 'Received', newBalance, new Date()]
-            );
-            
-            await client.query('COMMIT');
-
-            console.log(`Cashback of ₹${cashbackAmount} successfully awarded and added to wallet for customer ${customer_id}.`);
-            
-            return res.status(200).json({
-                message: 'Cashback has been awarded successfully and is now available in the customer\'s e-wallet.',
-                customer_data: customer,
-                showCashbackPopup: true,
-            });
-
-        } catch (error) {
-            await client.query('ROLLBACK');
-            console.error('Error during cashback award process:', error);
-            return res.status(500).json({ 
-                error: 'Failed to process cashback award.', 
-                details: error.message 
-            });
-        }
-    } catch (err) {
-        await client.query('ROLLBACK');
-        console.error('Database query error:', err.message);
-        res.status(500).json({
-            error: 'Failed to process cashback due to a database error.',
-            details: err.message
-        });
-    } finally {
-        client.release();
-    }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('FAILED TO SYNC COMPLETED BOOKINGS COUNT:', err.message);
+    res.status(500).json({
+      error: 'FAILED TO SYNC COMPLETED BOOKINGS COUNT',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  } finally {
+    client.release();
+  }
 });
 
+app.post('/api/check-customer-cashback', async (req, res) => {
+  const { customer_id } = req.body;
+
+  console.log(`[DEBUG] Received request to check cashback for customer_id: ${customer_id}`);
+
+  if (!customer_id || isNaN(parseInt(customer_id))) {
+    console.error(`[ERROR] Invalid customer_id received: ${customer_id}`);
+    return res.status(400).json({ error: 'A valid customer_id is required.' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    console.log(`[DEBUG] Database transaction started for customer_id: ${customer_id}`);
+
+    const customerResult = await client.query(
+      `SELECT customer_id, bookings_completed FROM customers WHERE customer_id = $1 FOR UPDATE`,
+      [customer_id]
+    );
+
+    const customer = customerResult.rows[0];
+    if (!customer) {
+      await client.query('ROLLBACK');
+      console.error(`[ERROR] Customer not found for customer_id: ${customer_id}`);
+      return res.status(404).json({ error: `Customer with ID ${customer_id} not found.` });
+    }
+    console.log(`[DEBUG] Customer data fetched:`, customer);
+
+    const cashbackRuleResult = await client.query(
+      `SELECT id, amount, is_subscribed, limit_id FROM cashbacks WHERE type = 'customer' AND is_subscribed = true AND achievement <= $1 ORDER BY achievement DESC LIMIT 1`,
+      [customer.bookings_completed]
+    );
+    const cashbackRule = cashbackRuleResult.rows[0];
+
+    console.log(`[DEBUG] Found cashback rule for ${customer.bookings_completed} bookings:`, cashbackRule);
+
+    if (!cashbackRule) {
+      await client.query('COMMIT');
+      console.log(`[INFO] No active cashback rule found. Committing transaction for customer: ${customer_id}`);
+      return res.status(200).json({ message: `No active cashback rule found for ${customer.bookings_completed} completed bookings.` });
+    }
+    
+    if (customer.customer_id > cashbackRule.limit_id) {
+      await client.query('COMMIT');
+      console.log(`[INFO] Customer ${customer_id} does not meet limit_id of ${cashbackRule.limit_id}. Committing.`);
+      return res.status(200).json({
+        message: `Cashback rule is limited to customer_ids less than or equal to ${cashbackRule.limit_id}.`
+      });
+    }
+
+    const existingCashbackResult = await client.query(
+      `SELECT id FROM wallet_transactions 
+       WHERE customer_id = $1 AND type = 'cashback' AND status = 'Received' AND cashback_rule_id = $2
+       LIMIT 1`,
+      [customer_id, cashbackRule.id]
+    );
+    
+    const cashbackAlreadyAwarded = existingCashbackResult.rows.length > 0;
+    console.log(`[DEBUG] Cashback already awarded for rule ${cashbackRule.id}? ${cashbackAlreadyAwarded}`);
+
+    if (cashbackAlreadyAwarded) {
+      await client.query('COMMIT');
+      console.log(`[INFO] Cashback already awarded for this rule. Committing transaction for customer: ${customer_id}`);
+      return res.status(200).json({ message: 'Cashback has already been awarded for this specific achievement rule.' });
+    }
+
+    const cashbackAmount = cashbackRule.amount;
+    // The balance is now simply the amount of the cashback transaction itself
+    const transactionBalance = cashbackAmount; 
+
+    console.log(`[INFO] Customer ${customer_id} is eligible for a cashback of: ${cashbackAmount}`);
+    console.log(`[DEBUG] Transaction balance will be: ${transactionBalance}`);
+
+    await client.query(
+      `INSERT INTO wallet_transactions (customer_id, wallet_id, booking_id, cashback_rule_id, amount, type, status, balance, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [customer.customer_id, customer.customer_id, null, cashbackRule.id, cashbackAmount, 'cashback', 'Received', transactionBalance, new Date()]
+    );
+
+    await client.query('COMMIT');
+
+    console.log(`[SUCCESS] Cashback of ${cashbackAmount} awarded to customer ${customer_id}. Transaction balance: ${transactionBalance}. Transaction committed.`);
+
+    return res.status(200).json({
+      message: 'Cashback has been awarded successfully and is now available in the customer\'s e-wallet.',
+      showCashbackPopup: true,
+      cashbackAmount: cashbackAmount,
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(`[FATAL ERROR] An unexpected error occurred for customer ${customer_id}. Transaction rolled back.`, error);
+    return res.status(500).json({ error: 'Failed to process cashback award.', details: error.message });
+  } finally {
+    client.release();
+    console.log(`[DEBUG] Database connection released for customer: ${customer_id}`);
+  }
+});
+
+app.post('/api/check-shop-cashback', async (req, res) => {
+  const { shop_id } = req.body;
+
+  console.log(`[DEBUG] Received request to check cashback for shop_id: ${shop_id}`);
+
+  if (!shop_id || isNaN(parseInt(shop_id))) {
+    console.error(`[ERROR] Invalid shop_id received: ${shop_id}`);
+    return res.status(400).json({ error: 'A valid shop_id is required.' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    console.log(`[DEBUG] Database transaction started for shop_id: ${shop_id}`);
+
+    const shopResult = await client.query(
+      `SELECT shop_id, monthly_bookings_count, is_subscribed FROM shops WHERE shop_id = $1 FOR UPDATE`,
+      [shop_id]
+    );
+
+    const shop = shopResult.rows[0];
+    if (!shop) {
+      await client.query('ROLLBACK');
+      console.error(`[ERROR] Shop not found for shop_id: ${shop_id}`);
+      return res.status(404).json({ error: `Shop with ID ${shop_id} not found.` });
+    }
+    console.log(`[DEBUG] Shop data fetched:`, shop);
+
+    if (!shop.is_subscribed) {
+      await client.query('COMMIT');
+      console.log(`[INFO] Shop ${shop_id} is not subscribed. No cashback awarded.`);
+      return res.status(200).json({ message: 'Shop is not subscribed, so no cashback is applicable.' });
+    }
+
+    const cashbackRuleResult = await client.query(
+      `SELECT id, amount, limit_id FROM cashbacks WHERE type = 'shop' AND achievement <= $1 ORDER BY achievement DESC LIMIT 1`,
+      [shop.monthly_bookings_count]
+    );
+    const cashbackRule = cashbackRuleResult.rows[0];
+
+    console.log(`[DEBUG] Found cashback rule for ${shop.monthly_bookings_count} monthly bookings:`, cashbackRule);
+
+    if (!cashbackRule) {
+      await client.query('COMMIT');
+      console.log(`[INFO] No cashback rule found. Committing transaction.`);
+      return res.status(200).json({ message: `No cashback rule found for ${shop.monthly_bookings_count} monthly bookings.` });
+    }
+    
+    if (shop.shop_id > cashbackRule.limit_id) {
+      await client.query('COMMIT');
+      console.log(`[INFO] Shop ${shop_id} does not meet limit_id of ${cashbackRule.limit_id}. Committing.`);
+      return res.status(200).json({
+        message: `Cashback rule is limited to shop_ids less than or equal to ${cashbackRule.limit_id}.`
+      });
+    }
+
+    const existingCashbackResult = await client.query(
+      `SELECT id FROM wallet_transactions_shop 
+       WHERE shop_id = $1 AND type = 'cashback' AND status = 'Received' AND cashback_rule_id = $2
+       LIMIT 1`,
+      [shop_id, cashbackRule.id]
+    );
+    
+    const cashbackAlreadyAwarded = existingCashbackResult.rows.length > 0;
+    console.log(`[DEBUG] Cashback already awarded for rule ${cashbackRule.id}? ${cashbackAlreadyAwarded}`);
+
+    if (cashbackAlreadyAwarded) {
+      await client.query('COMMIT');
+      console.log(`[INFO] Cashback already awarded for this rule. Committing transaction for shop: ${shop_id}`);
+      return res.status(200).json({ message: 'Cashback has already been awarded for this specific achievement rule.' });
+    }
+
+    const cashbackAmount = parseFloat(cashbackRule.amount);
+    // The balance is now simply the amount of the cashback transaction itself
+    const transactionBalance = cashbackAmount;
+
+    console.log(`[INFO] Shop ${shop_id} is eligible for a cashback of: ${cashbackAmount}`);
+    console.log(`[DEBUG] Transaction balance will be: ${transactionBalance}`);
+
+    await client.query(
+      `INSERT INTO wallet_transactions_shop (shop_id, wallet_id, booking_id, cashback_rule_id, amount, type, status, balance, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [shop.shop_id, shop.shop_id, null, cashbackRule.id, cashbackAmount, 'cashback', 'Received', transactionBalance, new Date()]
+    );
+
+    await client.query('COMMIT');
+
+    console.log(`[SUCCESS] Cashback of ${cashbackAmount} awarded to shop ${shop_id}. Transaction balance: ${transactionBalance}. Transaction committed.`);
+
+    return res.status(200).json({
+      message: 'Cashback has been awarded successfully and is now available in the shop\'s e-wallet.',
+      showCashbackPopup: true,
+      cashbackAmount: cashbackAmount,
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(`[FATAL ERROR] An unexpected error occurred for shop ${shop_id}. Transaction rolled back.`, error);
+    return res.status(500).json({ error: 'Failed to process cashback award.', details: error.message });
+  } finally {
+    client.release();
+    console.log(`[DEBUG] Database connection released for shop: ${shop_id}`);
+  }
+});
+
+
+
+
+// This route remains unchanged as it correctly updates the lifetime bookings_completed count.
 
 // --- API Route for Withdrawal ---
 // This route is called when the user explicitly requests to withdraw their cashback.
@@ -1946,6 +2088,700 @@ app.post('/api/withdraw-cashback', async (req, res) => {
         client.release();
     }
 });
+
+
+// --- SHOP WALLET ROUTES (No changes needed here) ---
+
+app.get('/shops/:shop_id/wallet', async (req, res) => {
+    const shop_id = parseInt(req.params.shop_id);
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        return res.status(400).json({ error: 'Invalid shop_id.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        // Verify shop existence
+        const shopCheck = await client.query('SELECT shop_id FROM public.shops WHERE shop_id = $1', [shop_id]);
+        if (shopCheck.rowCount === 0) {
+            return res.status(404).json({ error: 'Shop not found.' });
+        }
+
+        // Fetch all transactions for the shop, ordered by creation time descending
+        const transactionsResult = await client.query(
+            `SELECT id, shop_id, booking_id, amount, type, balance, status, created_at, upi_id
+             FROM public.wallet_transactions_shop
+             WHERE shop_id = $1
+             ORDER BY created_at DESC`,
+            [shop_id]
+        );
+
+        const transactions = transactionsResult.rows;
+
+        // Calculate the current balance by summing the 'balance' column of all transactions.
+        const currentBalance = transactions.reduce((sum, tx) => sum + tx.balance, 0);
+
+        res.status(200).json({
+            shop_id: shop_id,
+            current_balance: currentBalance,
+            transactions: transactions,
+        });
+
+    } catch (error) {
+        console.error(`Error fetching wallet for shop ${shop_id}:`, error.message);
+        res.status(500).json({ error: 'Failed to fetch shop wallet data.' });
+    } finally {
+        client.release();
+    }
+});
+
+// --- 2. POST /shops/:shop_id/withdraw ---
+// Handles withdrawal requests from a shop's wallet.
+app.post('/shops/:shop_id/withdraw', async (req, res) => {
+    const shop_id = parseInt(req.params.shop_id);
+    const { upi_id, withdrawalAmount } = req.body;
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        return res.status(400).json({ error: 'Invalid shop_id.' });
+    }
+    if (!upi_id || typeof upi_id !== 'string' || upi_id.trim() === '') {
+        return res.status(400).json({ error: 'Valid UPI ID is required.' });
+    }
+    if (typeof withdrawalAmount !== 'number' || withdrawalAmount <= 0) {
+        return res.status(400).json({ error: 'Withdrawal amount must be a positive number.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Verify shop existence and get its wallet_id
+        const shopResult = await client.query(
+            `SELECT shop_id, wallet_id FROM public.shops WHERE shop_id = $1`,
+            [shop_id]
+        );
+        const shop = shopResult.rows[0];
+
+        if (!shop) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Shop not found.' });
+        }
+
+        // 2. Calculate current wallet balance for the shop
+        const balanceResult = await client.query(
+            `SELECT SUM(balance) AS total_balance FROM public.wallet_transactions_shop WHERE shop_id = $1`,
+            [shop_id]
+        );
+        const currentBalance = balanceResult.rows[0].total_balance ? parseFloat(balanceResult.rows[0].total_balance) : 0;
+
+        // 3. Check if there are sufficient funds and no pending withdrawals
+        if (currentBalance < withdrawalAmount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Insufficient funds for withdrawal.' });
+        }
+
+        const pendingWithdrawalCheck = await client.query(
+            `SELECT COUNT(*) FROM public.wallet_transactions_shop WHERE shop_id = $1 AND status = 'Requested' AND type = 'withdrawal'`,
+            [shop_id]
+        );
+        if (pendingWithdrawalCheck.rows[0].count > 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'A withdrawal request is already pending. Please wait for it to be processed.' });
+        }
+
+        // 4. Insert a 'withdrawal' transaction with 'Requested' status
+        const newBalance = currentBalance - withdrawalAmount;
+        const withdrawalTransactionQuery = `
+            INSERT INTO public.wallet_transactions_shop (
+                shop_id, wallet_id, amount, type, balance, status, upi_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *
+        `;
+        const withdrawalValues = [
+            shop_id,
+            shop.wallet_id, // Use the shop's wallet_id
+            withdrawalAmount,
+            'withdrawal',
+             0 , 
+            'Requested',
+            upi_id.trim()
+        ];
+        await client.query(withdrawalTransactionQuery, withdrawalValues);
+
+        await client.query('COMMIT');
+        res.status(200).json({
+            message: 'Withdrawal request submitted successfully.',
+            new_balance: newBalance,
+            status: 'Requested'
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(`Error processing withdrawal for shop ${shop_id}:`, error.message);
+        res.status(500).json({ error: 'Failed to process withdrawal: ' + error.message });
+    } finally {
+        client.release();
+    }
+});
+
+//-Shops subscription payments
+
+
+app.get('/shops/:shop_id', async (req, res) => {
+    console.log(`[GET /shops/:shop_id] Request received for shop ID: ${req.params.shop_id}`);
+    const shop_id = parseInt(req.params.shop_id);
+
+    // Validate shop_id
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        console.error(`[GET /shops/:shop_id] Invalid shop ID: ${req.params.shop_id}`);
+        return res.status(400).json({ error: 'INVALID SHOP ID.' });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        // Query the public.shops table to get all relevant columns
+        const shopResult = await client.query(`
+            SELECT
+                shop_id,
+                shop_name,
+                is_subscribed,
+                ads,      -- Fetch the ads JSONB column
+                banners,  -- Fetch the banners JSONB column
+                offers,   -- Fetch the offers JSONB column
+                top_rated,
+                wallet_id,
+                type,
+                bookings_completed,
+                credits,
+                gender
+            FROM public.shops
+            WHERE shop_id = $1;
+        `, [shop_id]);
+
+        if (shopResult.rowCount === 0) {
+            console.warn(`[GET /shops/:shop_id] Shop not found for ID: ${shop_id}`);
+            return res.status(404).json({ error: 'SHOP NOT FOUND.' });
+        }
+
+        const shopData = shopResult.rows[0];
+        console.log(`[GET /shops/:shop_id] Successfully fetched shop data for ID: ${shop_id}`);
+        res.status(200).json(shopData);
+
+    } catch (error) {
+        console.error(`[GET /shops/:shop_id] Error fetching shop ${shop_id}:`, error.message);
+        res.status(500).json({ error: 'FAILED TO FETCH SHOP DETAILS.' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+
+// Fetches available subscription plans for a given shop based on its type and active season.
+app.get('/shops/:shop_id/subscription-plans', async (req, res) => {
+    const shop_id = parseInt(req.params.shop_id);
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        return res.status(400).json({ error: 'Invalid shop ID.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        // 1. Get the shop's 'type' (segment)
+        const shopResult = await client.query('SELECT type FROM public.shops WHERE shop_id = $1', [shop_id]);
+        if (shopResult.rowCount === 0) {
+            return res.status(404).json({ error: 'Shop not found.' });
+        }
+        const shopType = shopResult.rows[0].type; // e.g., 'premium', 'mid', 'economy'
+
+        // 2. Fetch active subscription plans matching the shop's type and active season
+        const plansResult = await client.query(`
+            SELECT
+                id,
+                segment,
+                price,
+                discount_percent,
+                season_type,
+                season_active
+            FROM
+                public.subscription_fees
+            WHERE
+                segment = $1 AND season_active = TRUE;
+        `, [shopType]);
+
+        const plans = plansResult.rows.map(plan => {
+            const discountedPrice = plan.price - (plan.price * plan.discount_percent / 100);
+            return {
+                ...plan,
+                final_price: parseFloat(discountedPrice.toFixed(2)) // Ensure 2 decimal places
+            };
+        });
+
+        res.status(200).json({ shop_id, shop_type: shopType, plans });
+
+    } catch (error) {
+        console.error(`Error fetching subscription plans for shop ${shop_id}:`, error.message);
+        res.status(500).json({ error: 'Failed to fetch subscription plans.' });
+    } finally {
+        client.release();
+    }
+});
+
+// --- POST /shops/:shop_id/create-razorpay-order ---
+// Creates a Razorpay order for the selected subscription plan.
+app.post('/shops/:shop_id/create-razorpay-order', async (req, res) => {
+    console.log(`[POST /shops/:shop_id/create-razorpay-order] Request received for shop ID: ${req.params.shop_id}`); // Debugging log
+    const shop_id = parseInt(req.params.shop_id);
+    const { plan_id } = req.body;
+
+    console.log(`[POST /shops/:shop_id/create-razorpay-order] Payload: Shop ID: ${shop_id}, Plan ID: ${plan_id}`); // Debugging log
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        console.error(`[POST /shops/:shop_id/create-razorpay-order] Invalid shop ID provided: ${req.params.shop_id}`); // Debugging log
+        return res.status(400).json({ error: 'Invalid shop ID.' });
+    }
+    if (!Number.isInteger(plan_id) || plan_id <= 0) {
+        console.error(`[POST /shops/:shop_id/create-razorpay-order] Invalid plan ID provided: ${plan_id}`); // Debugging log
+        return res.status(400).json({ error: 'Invalid plan ID.' });
+    }
+
+    let client; // Declare client here so it's accessible in finally block
+    try {
+        client = await pool.connect();
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Database client connected for shop ID: ${shop_id}`); // Debugging log
+
+        // 1. Fetch the selected plan details
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Fetching plan details for plan ID: ${plan_id}`); // Debugging log
+        const planResult = await client.query(`
+            SELECT price, discount_percent FROM public.subscription_fees WHERE id = $1 AND season_active = TRUE;
+        `, [plan_id]);
+
+        if (planResult.rowCount === 0) {
+            console.warn(`[POST /shops/:shop_id/create-razorpay-order] Subscription plan not found or not active for plan ID: ${plan_id}`); // Debugging log
+            return res.status(404).json({ error: 'Subscription plan not found or not active.' });
+        }
+
+        const { price, discount_percent } = planResult.rows[0];
+        const finalAmount = price - (price * discount_percent / 100);
+        const amountInPaise = Math.round(finalAmount * 100); // Razorpay expects amount in smallest currency unit (paise)
+
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Plan details fetched: Price=${price}, Discount=${discount_percent}%, Final Amount=${finalAmount}, Amount in Paise=${amountInPaise}`); // Debugging log
+
+        // 2. Create Razorpay order
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Attempting to create Razorpay order...`); // Debugging log
+        const order = await razorpay.orders.create({
+            amount: amountInPaise,
+            currency: "INR",
+            receipt: `receipt_shop_${shop_id}_plan_${plan_id}_${Date.now()}`,
+            notes: {
+                shop_id: shop_id,
+                plan_id: plan_id,
+                subscription_type: 'shop'
+            }
+        });
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Razorpay order created successfully: ${order.id}`); // Debugging log
+
+        res.status(200).json({
+            order_id: order.id,
+            amount: order.amount / 100, // Return amount in rupees
+            currency: order.currency,
+            key_id: process.env.RAZORPAY_KEY_ID // Send key_id to frontend for checkout
+        });
+
+    } catch (error) {
+        console.error(`[POST /shops/:shop_id/create-razorpay-order] Error during Razorpay order creation for shop ${shop_id}:`, error.message); // Detailed error log
+        // If it's a Razorpay error, log the full error object for more details
+        if (error.code && error.description) {
+            console.error('Razorpay Error Details:', error);
+        }
+        res.status(500).json({ error: 'Failed to create Razorpay order: ' + error.message });
+    } finally {
+        if (client) { // Ensure client exists before releasing
+            client.release();
+            console.log(`[POST /shops/:shop_id/create-razorpay-order] Database client released for shop ID: ${shop_id}`); // Debugging log
+        }
+    }
+});
+
+
+// Helper function to check subscription status and fetch current perks
+async function checkSubscriptionAndGetPerks(client, shop_id, res) {
+    const shopResult = await client.query(`
+        SELECT is_subscribed, ads, banners, offers
+        FROM public.shops
+        WHERE shop_id = $1;
+    `, [shop_id]);
+
+    if (shopResult.rowCount === 0) {
+        console.warn(`[Perks Route] Shop not found for ID: ${shop_id}`);
+        res.status(404).json({ error: 'SHOP NOT FOUND.' });
+        return null;
+    }
+
+    const shopData = shopResult.rows[0];
+    if (!shopData.is_subscribed) {
+        console.warn(`[Perks Route] Shop ${shop_id} is not subscribed. Access denied.`);
+        res.status(403).json({ error: 'SUBSCRIPTION REQUIRED TO MANAGE PERKS.' });
+        return null;
+    }
+    return shopData;
+}
+
+// --- PUT /shops/:shop_id/ads ---
+// Manages adding, removing, or updating ads for a subscribed shop.
+// Max 2 ads. Each ad must have title and either image_url or video_url.
+app.put('/shops/:shop_id/ads', async (req, res) => {
+    console.log(`[PUT /shops/:shop_id/ads] Request received for shop ID: ${req.params.shop_id}`);
+    const shop_id = parseInt(req.params.shop_id);
+    const { operation, data } = req.body; // operation: 'add', 'remove', 'update'
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        console.error(`[PUT /shops/:shop_id/ads] Invalid shop ID: ${req.params.shop_id}`);
+        return res.status(400).json({ error: 'INVALID SHOP ID.' });
+    }
+    if (!['add', 'remove', 'update'].includes(operation)) {
+        console.error(`[PUT /shops/:shop_id/ads] Invalid operation: ${operation}`);
+        return res.status(400).json({ error: 'INVALID OPERATION. MUST BE ADD, REMOVE, OR UPDATE.' });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        const shopData = await checkSubscriptionAndGetPerks(client, shop_id, res);
+        if (!shopData) return; // Response already sent by helper
+
+        let currentAds = shopData.ads || [];
+        let message = '';
+
+        if (operation === 'add') {
+            const { title, image_url, video_url } = data;
+            if (!title || (!image_url && !video_url)) {
+                console.error(`[PUT /shops/:shop_id/ads] Add operation: Missing title or media URL.`);
+                return res.status(400).json({ error: 'AD REQUIRES A TITLE AND EITHER AN IMAGE OR VIDEO URL.' });
+            }
+            if (image_url && video_url) {
+                console.error(`[PUT /shops/:shop_id/ads] Add operation: Both image and video URL provided.`);
+                return res.status(400).json({ error: 'AD CANNOT HAVE BOTH IMAGE AND VIDEO URLS.' });
+            }
+            if (currentAds.length >= 2) {
+                console.warn(`[PUT /shops/:shop_id/ads] Add operation: Max ads limit reached for shop ${shop_id}.`);
+                return res.status(400).json({ error: 'MAXIMUM OF 2 ADS ALLOWED.' });
+            }
+            currentAds.push({ title, image_url: image_url || null, video_url: video_url || null });
+            message = 'AD ADDED SUCCESSFULLY.';
+            console.log(`[PUT /shops/:shop_id/ads] Ad added for shop ${shop_id}. New ads count: ${currentAds.length}`);
+        } else if (operation === 'remove') {
+            const { url_to_remove } = data;
+            if (!url_to_remove) {
+                console.error(`[PUT /shops/:shop_id/ads] Remove operation: Missing URL to remove.`);
+                return res.status(400).json({ error: 'URL TO REMOVE IS REQUIRED.' });
+            }
+            const initialLength = currentAds.length;
+            currentAds = currentAds.filter(ad => ad.image_url !== url_to_remove && ad.video_url !== url_to_remove);
+            if (currentAds.length === initialLength) {
+                console.warn(`[PUT /shops/:shop_id/ads] Remove operation: Ad not found for URL: ${url_to_remove}`);
+                return res.status(404).json({ error: 'AD NOT FOUND.' });
+            }
+            message = 'AD REMOVED SUCCESSFULLY.';
+            console.log(`[PUT /shops/:shop_id/ads] Ad removed for shop ${shop_id}. Remaining ads: ${currentAds.length}`);
+        } else if (operation === 'update') {
+            const { old_url, new_title, new_image_url, new_video_url } = data;
+            if (!old_url || !new_title || (!new_image_url && !new_video_url)) {
+                console.error(`[PUT /shops/:shop_id/ads] Update operation: Missing required fields.`);
+                return res.status(400).json({ error: 'UPDATE REQUIRES OLD URL, NEW TITLE, AND NEW MEDIA URL.' });
+            }
+            if (new_image_url && new_video_url) {
+                console.error(`[PUT /shops/:shop_id/ads] Update operation: Cannot have both new image and video URL.`);
+                return res.status(400).json({ error: 'AD CANNOT HAVE BOTH IMAGE AND VIDEO URLS.' });
+            }
+
+            const adIndex = currentAds.findIndex(ad => ad.image_url === old_url || ad.video_url === old_url);
+            if (adIndex === -1) {
+                console.warn(`[PUT /shops/:shop_id/ads] Update operation: Old ad not found for URL: ${old_url}`);
+                return res.status(404).json({ error: 'OLD AD NOT FOUND FOR UPDATE.' });
+            }
+            currentAds[adIndex] = {
+                title: new_title,
+                image_url: new_image_url || null,
+                video_url: new_video_url || null
+            };
+            message = 'AD UPDATED SUCCESSFULLY.';
+            console.log(`[PUT /shops/:shop_id/ads] Ad updated for shop ${shop_id}.`);
+        }
+
+        await client.query('UPDATE public.shops SET ads = $1 WHERE shop_id = $2', [JSON.stringify(currentAds), shop_id]);
+        res.status(200).json({ message, ads: currentAds });
+
+    } catch (error) {
+        console.error(`[PUT /shops/:shop_id/ads] Error processing ads update for shop ${shop_id}:`, error.message);
+        res.status(500).json({ error: 'FAILED TO UPDATE ADS.' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// --- PUT /shops/:shop_id/banners ---
+// Manages adding, removing, or updating banners for a subscribed shop.
+// Max 2 banners. Each banner must have an image_url.
+app.put('/shops/:shop_id/banners', async (req, res) => {
+    console.log(`[PUT /shops/:shop_id/banners] Request received for shop ID: ${req.params.shop_id}`);
+    const shop_id = parseInt(req.params.shop_id);
+    const { operation, data } = req.body; // operation: 'add', 'remove', 'update'
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        console.error(`[PUT /shops/:shop_id/banners] Invalid shop ID: ${req.params.shop_id}`);
+        return res.status(400).json({ error: 'INVALID SHOP ID.' });
+    }
+    if (!['add', 'remove', 'update'].includes(operation)) {
+        console.error(`[PUT /shops/:shop_id/banners] Invalid operation: ${operation}`);
+        return res.status(400).json({ error: 'INVALID OPERATION. MUST BE ADD, REMOVE, OR UPDATE.' });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        const shopData = await checkSubscriptionAndGetPerks(client, shop_id, res);
+        if (!shopData) return;
+
+        let currentBanners = shopData.banners || [];
+        let message = '';
+
+        if (operation === 'add') {
+            const { image_url } = data;
+            if (!image_url) {
+                console.error(`[PUT /shops/:shop_id/banners] Add operation: Missing image URL.`);
+                return res.status(400).json({ error: 'BANNER REQUIRES AN IMAGE URL.' });
+            }
+            if (currentBanners.length >= 2) {
+                console.warn(`[PUT /shops/:shop_id/banners] Add operation: Max banners limit reached for shop ${shop_id}.`);
+                return res.status(400).json({ error: 'MAXIMUM OF 2 BANNERS ALLOWED.' });
+            }
+            currentBanners.push({ image_url });
+            message = 'BANNER ADDED SUCCESSFULLY.';
+            console.log(`[PUT /shops/:shop_id/banners] Banner added for shop ${shop_id}. New banners count: ${currentBanners.length}`);
+        } else if (operation === 'remove') {
+            const { url_to_remove } = data;
+            if (!url_to_remove) {
+                console.error(`[PUT /shops/:shop_id/banners] Remove operation: Missing URL to remove.`);
+                return res.status(400).json({ error: 'URL TO REMOVE IS REQUIRED.' });
+            }
+            const initialLength = currentBanners.length;
+            currentBanners = currentBanners.filter(banner => banner.image_url !== url_to_remove);
+            if (currentBanners.length === initialLength) {
+                console.warn(`[PUT /shops/:shop_id/banners] Remove operation: Banner not found for URL: ${url_to_remove}`);
+                return res.status(404).json({ error: 'BANNER NOT FOUND.' });
+            }
+            message = 'BANNER REMOVED SUCCESSFULLY.';
+            console.log(`[PUT /shops/:shop_id/banners] Banner removed for shop ${shop_id}. Remaining banners: ${currentBanners.length}`);
+        } else if (operation === 'update') {
+            const { old_url, new_image_url } = data;
+            if (!old_url || !new_image_url) {
+                console.error(`[PUT /shops/:shop_id/banners] Update operation: Missing old or new URL.`);
+                return res.status(400).json({ error: 'UPDATE REQUIRES OLD AND NEW IMAGE URLS.' });
+            }
+            const bannerIndex = currentBanners.findIndex(banner => banner.image_url === old_url);
+            if (bannerIndex === -1) {
+                console.warn(`[PUT /shops/:shop_id/banners] Update operation: Old banner not found for URL: ${old_url}`);
+                return res.status(404).json({ error: 'OLD BANNER NOT FOUND FOR UPDATE.' });
+            }
+            currentBanners[bannerIndex] = { image_url: new_image_url };
+            message = 'BANNER UPDATED SUCCESSFULLY.';
+            console.log(`[PUT /shops/:shop_id/banners] Banner updated for shop ${shop_id}.`);
+        }
+
+        await client.query('UPDATE public.shops SET banners = $1 WHERE shop_id = $2', [JSON.stringify(currentBanners), shop_id]);
+        res.status(200).json({ message, banners: currentBanners });
+
+    } catch (error) {
+        console.error(`[PUT /shops/:shop_id/banners] Error processing banners update for shop ${shop_id}:`, error.message);
+        res.status(500).json({ error: 'FAILED TO UPDATE BANNERS.' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// --- PUT /shops/:shop_id/offers ---
+// Manages adding, removing, or updating offers for a subscribed shop.
+// Max 5 offers. Each offer must have title and discount.
+app.put('/shops/:shop_id/offers', async (req, res) => {
+    console.log(`[PUT /shops/:shop_id/offers] Request received for shop ID: ${req.params.shop_id}`);
+    const shop_id = parseInt(req.params.shop_id);
+    const { operation, data } = req.body; // operation: 'add', 'remove', 'update'
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        console.error(`[PUT /shops/:shop_id/offers] Invalid shop ID: ${req.params.shop_id}`);
+        return res.status(400).json({ error: 'INVALID SHOP ID.' });
+    }
+    if (!['add', 'remove', 'update'].includes(operation)) {
+        console.error(`[PUT /shops/:shop_id/offers] Invalid operation: ${operation}`);
+        return res.status(400).json({ error: 'INVALID OPERATION. MUST BE ADD, REMOVE, OR UPDATE.' });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        const shopData = await checkSubscriptionAndGetPerks(client, shop_id, res);
+        if (!shopData) return;
+
+        let currentOffers = shopData.offers || [];
+        let message = '';
+
+        if (operation === 'add') {
+            const { title, discount } = data;
+            if (!title || typeof discount !== 'number' || discount < 0) {
+                console.error(`[PUT /shops/:shop_id/offers] Add operation: Missing title or invalid discount.`);
+                return res.status(400).json({ error: 'OFFER REQUIRES A TITLE AND A VALID DISCOUNT PERCENTAGE.' });
+            }
+            if (currentOffers.length >= 5) {
+                console.warn(`[PUT /shops/:shop_id/offers] Add operation: Max offers limit reached for shop ${shop_id}.`);
+                return res.status(400).json({ error: 'MAXIMUM OF 5 OFFERS ALLOWED.' });
+            }
+            currentOffers.push({ title, discount });
+            message = 'OFFER ADDED SUCCESSFULLY.';
+            console.log(`[PUT /shops/:shop_id/offers] Offer added for shop ${shop_id}. New offers count: ${currentOffers.length}`);
+        } else if (operation === 'remove') {
+            const { title_to_remove } = data;
+            if (!title_to_remove) {
+                console.error(`[PUT /shops/:shop_id/offers] Remove operation: Missing title to remove.`);
+                return res.status(400).json({ error: 'TITLE TO REMOVE IS REQUIRED.' });
+            }
+            const initialLength = currentOffers.length;
+            currentOffers = currentOffers.filter(offer => offer.title !== title_to_remove);
+            if (currentOffers.length === initialLength) {
+                console.warn(`[PUT /shops/:shop_id/offers] Remove operation: Offer not found for title: ${title_to_remove}`);
+                return res.status(404).json({ error: 'OFFER NOT FOUND.' });
+            }
+            message = 'OFFER REMOVED SUCCESSFULLY.';
+            console.log(`[PUT /shops/:shop_id/offers] Offer removed for shop ${shop_id}. Remaining offers: ${currentOffers.length}`);
+        } else if (operation === 'update') {
+            const { old_title, new_title, new_discount } = data;
+            if (!old_title || !new_title || typeof new_discount !== 'number' || new_discount < 0) {
+                console.error(`[PUT /shops/:shop_id/offers] Update operation: Missing required fields or invalid discount.`);
+                return res.status(400).json({ error: 'UPDATE REQUIRES OLD TITLE, NEW TITLE, AND A VALID NEW DISCOUNT.' });
+            }
+            const offerIndex = currentOffers.findIndex(offer => offer.title === old_title);
+            if (offerIndex === -1) {
+                console.warn(`[PUT /shops/:shop_id/offers] Update operation: Old offer not found for title: ${old_title}`);
+                return res.status(404).json({ error: 'OLD OFFER NOT FOUND FOR UPDATE.' });
+            }
+            currentOffers[offerIndex] = { title: new_title, discount: new_discount };
+            message = 'OFFER UPDATED SUCCESSFULLY.';
+            console.log(`[PUT /shops/:shop_id/offers] Offer updated for shop ${shop_id}.`);
+        }
+
+        await client.query('UPDATE public.shops SET offers = $1 WHERE shop_id = $2', [JSON.stringify(currentOffers), shop_id]);
+        res.status(200).json({ message, offers: currentOffers });
+
+    } catch (error) {
+        console.error(`[PUT /shops/:shop_id/offers] Error processing offers update for shop ${shop_id}:`, error.message);
+        res.status(500).json({ error: 'FAILED TO UPDATE OFFERS.' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// --- POST /shops/:shop_id/verify-payment ---
+// Verifies Razorpay payment and updates shop's subscription status.
+app.post('/shops/:shop_id/verify-payment', async (req, res) => {
+    const shop_id = parseInt(req.params.shop_id);
+    const {
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+        plan_id
+    } = req.body;
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        return res.status(400).json({ error: 'Invalid shop ID.' });
+    }
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !plan_id) {
+        return res.status(400).json({ error: 'Missing payment verification details.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN'); // Start transaction
+
+        // 1. Verify payment signature
+        const crypto = require('crypto');
+        const hmac = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
+        hmac.update(razorpay_order_id + "|" + razorpay_payment_id);
+        const generated_signature = hmac.digest('hex');
+
+        if (generated_signature !== razorpay_signature) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Payment verification failed: Invalid signature.' });
+        }
+
+        // 2. Fetch plan details to ensure correct amount was paid
+        const planResult = await client.query(`
+            SELECT price, discount_percent FROM public.subscription_fees WHERE id = $1 AND season_active = TRUE;
+        `, [plan_id]);
+
+        if (planResult.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Subscription plan not found or not active during verification.' });
+        }
+        const { price, discount_percent } = planResult.rows[0];
+        const expectedAmount = price - (price * discount_percent / 100);
+
+        // Optional: Verify the amount paid with Razorpay API (more robust)
+        // const payment = await instance.payments.fetch(razorpay_payment_id);
+        // if (payment.amount / 100 !== expectedAmount) {
+        //     await client.query('ROLLBACK');
+        //     return res.status(400).json({ error: 'Payment verification failed: Amount mismatch.' });
+        // }
+
+        // 3. Get shop's wallet_id
+        const shopWalletResult = await client.query('SELECT wallet_id FROM public.shops WHERE shop_id = $1', [shop_id]);
+        if (shopWalletResult.rowCount === 0 || !shopWalletResult.rows[0].wallet_id) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Shop or shop wallet not found.' });
+        }
+        const shopWalletId = shopWalletResult.rows[0].wallet_id;
+
+        // 4. Update shop status and benefits
+        await client.query(`
+            UPDATE public.shops
+            SET
+                is_subscribed = TRUE,
+                credits = 31, -- Set credits to 31 for a month's subscription
+                ads = '[]'::jsonb,      -- Reset ads (or set default content)
+                banners = '[]'::jsonb,  -- Reset banners (or set default content)
+                offers = '[]'::jsonb,   -- Reset offers (or set default content)
+                top_rated = TRUE        -- Grant top-rated status
+            WHERE shop_id = $1;
+        `, [shop_id]);
+
+        // 5. Insert transaction into wallet_transactions_shop
+        await client.query(`
+            INSERT INTO public.wallet_transactions_shop (
+                shop_id, wallet_id, amount, type, balance, status, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, NOW());
+        `, [
+            shop_id,
+            shopWalletId,
+            expectedAmount, // The actual amount paid for subscription
+            'subscription', // Type: 'subscription'
+            0,              // Balance: 0 as it's a payment for service, not a wallet credit/debit
+            'Paid'          // Status: 'Paid'
+        ]);
+
+        await client.query('COMMIT'); // Commit transaction
+
+        res.status(200).json({ message: 'Payment successful and subscription activated!', shop_id });
+
+    } catch (error) {
+        await client.query('ROLLBACK'); // Rollback transaction on error
+        console.error(`Error verifying payment for shop ${shop_id}:`, error.message);
+        res.status(500).json({ error: 'Failed to verify payment: ' + error.message });
+    } finally {
+        client.release();
+    }
+});
+
 
 
 // --- ADMIN ROUTES (No changes needed here) ---
@@ -2099,13 +2935,304 @@ await client.query(updateTransactionQuery, [transactionId]);
 
 
 
+//admin for shops
+
+app.get('/admin/shop-wallet-transactions', async (req, res) => {
+  try {
+    const query = `
+      SELECT
+        wts.id,
+        wts.shop_id,
+        wts.amount,
+        wts.type,
+        wts.status,
+        wts.upi_id,
+        wts.created_at,
+        s.shop_name AS shop_name,
+        s.ph_number AS ph_number
+      FROM wallet_transactions_shop wts
+      JOIN shops s ON wts.shop_id = s.shop_id
+      ORDER BY wts.created_at DESC;
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching all shop wallet transactions:', err);
+    res.status(500).json({ error: 'Failed to fetch shop transactions.' });
+  }
+});
+
+app.get('/admin/shop/pay-withdrawal/:transactionId', async (req, res) => {
+  const { transactionId } = req.params;
+
+  try {
+    // 1. Fetch the transaction to verify its status and get shop/amount details.
+    const transactionResult = await pool.query(
+      `SELECT shop_id, amount, upi_id FROM wallet_transactions_shop WHERE id = $1 AND status = 'Requested';`,
+      [transactionId]
+    );
+
+    if (transactionResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found or not in a "Requested" state.' });
+    }
+
+    const { shop_id, amount, upi_id } = transactionResult.rows[0];
+
+    // 2. Parse the 'amount' string to a float before using toFixed().
+    const numericAmount = parseFloat(amount);
+
+    // 3. Generate and return a UPI payment link for the admin to use.
+    // Use the numericAmount variable here.
+    const upiLink = `upi://pay?pa=${upi_id}&pn=Shop%20Wallet%20Withdrawal&am=${numericAmount.toFixed(2)}&cu=INR`;
+
+    res.status(200).json({
+      message: 'UPI link generated successfully.',
+      upiLink,
+      shopId: shop_id,
+      amount: numericAmount, // Return the numeric amount
+    });
+  } catch (err) {
+    console.error('Error fetching shop withdrawal details:', err);
+    res.status(500).json({ error: 'An error occurred while fetching shop withdrawal details.' });
+  }
+});
+
+app.put('/admin/shop/confirm-withdrawal/:transactionId', async (req, res) => {
+  const { transactionId } = req.params;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN'); // Start a database transaction
+
+    // 1. Fetch the transaction
+    const transactionQuery = `
+      SELECT shop_id, amount, status
+      FROM wallet_transactions_shop
+      WHERE id = $1 FOR UPDATE;
+    `;
+    const transactionResult = await client.query(transactionQuery, [transactionId]);
+
+    if (transactionResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Transaction not found.' });
+    }
+
+    const transaction = transactionResult.rows[0];
+
+    // 2. Check if the transaction is still 'Requested'
+    if (transaction.status !== 'Requested') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Transaction has already been processed.' });
+    }
+
+    // 3. Update the transaction
+    const updateTransactionQuery = `
+      UPDATE wallet_transactions_shop
+      SET status = 'Withdrawn', balance = -amount, type = 'withdrawal'
+      WHERE id = $1;
+    `;
+    await client.query(updateTransactionQuery, [transactionId]);
+
+    await client.query('COMMIT'); // Commit the transaction
+
+    // 4. Send push notification to the shop
+    try {
+      // Recalculate the shop's balance after withdrawal
+      const balanceQuery = `
+        SELECT SUM(balance) AS total_balance FROM wallet_transactions_shop WHERE shop_id = $1;
+      `;
+      const balanceResult = await pool.query(balanceQuery, [transaction.shop_id]);
+      const newBalance = balanceResult.rows[0].total_balance ? parseFloat(balanceResult.rows[0].total_balance) : 0;
+      
+      const payload = {
+        title: 'Withdrawal Confirmed!',
+        body: `Withdrawal of ₹${parseFloat(transaction.amount).toFixed(2)} has been successfully processed. Your new wallet balance is ₹${newBalance.toFixed(2)}.`,
+      };
+      // Assume a function sendNotificationToShop exists
+      await sendNotificationToShop(transaction.shop_id, payload);
+    } catch (notificationError) {
+      console.error('Error sending push notification to shop:', notificationError);
+      // Log the error but don't fail the API call
+    }
+
+    // 5. Respond to the client
+    res.status(200).json({
+      message: 'Shop withdrawal successfully confirmed and wallet updated.',
+    });
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error confirming shop withdrawal:', err);
+    res.status(500).json({ error: 'An error occurred while confirming the shop withdrawal.' });
+  } finally {
+    client.release();
+  }
+});
 
 
+// --- Get Shop Fee Override Status ---
+// --- Get Shop Fee Override Status ---
+app.get('/shops/:shop_id/fee-status', async (req, res) => {
+    const shop_id = parseInt(req.params.shop_id);
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        return res.status(400).json({ error: 'Invalid shop_id' });
+    }
+
+    const client = await pool.connect();
+    try {
+        const result = await client.query(`
+            SELECT status FROM public.shop_booking_fee_overrides
+            WHERE shop_id = $1
+        `, [shop_id]);
+
+        if (result.rowCount === 0) {
+            // If no override exists, assume 'normal' as per default
+            return res.status(200).json({ shop_id: shop_id, status: 'normal', message: 'No specific override found, defaulting to normal.' });
+        }
+
+        res.status(200).json({ shop_id: shop_id, status: result.rows[0].status });
+    } catch (error) {
+        console.error('Error fetching shop fee status:', error.message);
+        res.status(500).json({ error: 'Failed to fetch shop fee status' });
+    } finally {
+        client.release();
+    }
+});
+
+// --- Update Shop Fee Override Status ---
+app.put('/shops/:shop_id/fee-status', async (req, res) => {
+    const shop_id = parseInt(req.params.shop_id);
+    const { status } = req.body; // Expected: 'normal', 'high', 'low'
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        return res.status(400).json({ error: 'Invalid shop_id' });
+    }
+
+    const validStatuses = ['normal', 'high', 'low'];
+    if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const client = await pool.connect();
+    try {
+        // Check if the shop exists
+        const shopExists = await client.query('SELECT shop_id FROM public.shops WHERE shop_id = $1', [shop_id]);
+        if (shopExists.rowCount === 0) {
+            return res.status(404).json({ error: 'Shop not found.' });
+        }
+
+        // Upsert logic: Update if exists, Insert if not
+        const result = await client.query(`
+            INSERT INTO public.shop_booking_fee_overrides (shop_id, status)
+            VALUES ($1, $2)
+            ON CONFLICT (shop_id) DO UPDATE
+            SET status = EXCLUDED.status
+            RETURNING *;
+        `, [shop_id, status]);
+
+        res.status(200).json({
+            message: `Shop ${shop_id} fee status updated to '${status}'`,
+            override: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error updating shop fee status:', error.message);
+        res.status(500).json({ error: 'Failed to update shop fee status' });
+    } finally {
+        client.release();
+    }
+});
+
+
+
+
+
+// New Backend Route to get calculated booking fee for a shop
+app.get('/shops/:shop_id/booking-fee', async (req, res) => {
+    const shop_id = parseInt(req.params.shop_id);
+
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        return res.status(400).json({ error: 'Invalid shop_id' });
+    }
+
+    const client = await pool.connect();
+    try {
+        // 1. Get shop type (segment)
+        const shopResult = await client.query(
+            'SELECT type FROM public.shops WHERE shop_id = $1 AND is_active = TRUE',
+            [shop_id]
+        );
+
+        if (shopResult.rowCount === 0) {
+            return res.status(404).json({ error: 'Shop not found or inactive' });
+        }
+        const shopType = shopResult.rows[0].type;
+
+        // 2. Query active season booking fees for the shop's segment
+        const bookingFeesResult = await client.query(`
+            SELECT base_fee, high_rush_fee, low_rush_fee, discount_percent
+            FROM public.booking_fees
+            WHERE segment = $1 AND season_active = TRUE
+        `, [shopType]);
+
+        if (bookingFeesResult.rowCount === 0) {
+            // If no active rule, default to 0 fee and 0 discount
+            return res.status(200).json({ fee: 0, discount_percent: 0, message: 'No active booking fee rule found for shop segment. Fee is 0.' });
+        }
+
+        const { base_fee, high_rush_fee, low_rush_fee, discount_percent } = bookingFeesResult.rows[0];
+
+        // 3. Check shop_booking_fee_overrides for the specific shop
+        const shopOverrideResult = await client.query(`
+            SELECT status FROM public.shop_booking_fee_overrides
+            WHERE shop_id = $1
+        `, [shop_id]);
+
+        let overrideStatus = 'normal'; // Default to normal if no override exists
+        if (shopOverrideResult.rowCount > 0) {
+            overrideStatus = shopOverrideResult.rows[0].status;
+        }
+
+        // 4. Apply the correct fee based on override status
+        let calculatedFees = 0;
+        switch (overrideStatus) {
+            case 'normal':
+                calculatedFees = base_fee;
+                break;
+            case 'high':
+                calculatedFees = high_rush_fee;
+                break;
+            case 'low':
+                calculatedFees = low_rush_fee;
+                break;
+            default:
+                calculatedFees = base_fee; // Fallback
+        }
+
+        // 5. Apply discount if applicable
+        let finalFee = calculatedFees;
+        if (discount_percent > 0) {
+            finalFee = calculatedFees * (1 - discount_percent / 100);
+        }
+        finalFee = Math.round(finalFee); // Ensure integer amount
+
+        res.status(200).json({ fee: finalFee, discount_percent: discount_percent });
+
+    } catch (error) {
+        console.error('Error fetching calculated booking fee:', error.message);
+        res.status(500).json({ error: 'Failed to fetch calculated booking fee' });
+    } finally {
+        client.release();
+    }
+});
+
+//create razorpay order booking fees payment
+
+// --- Booking Creation Route ---
 app.post('/bookings', async (req, res) => {
-    // MODIFIED: Added booking_fee_paid to the request body
     const { shop_id, emp_id, customer_id, service_ids, booking_fee_paid } = req.body;
 
-    // --- (UNCHANGED VALIDATION & INITIAL SETUP) ---
+    // --- Validation & Initial Setup ---
     if (!shop_id || !emp_id || !Array.isArray(service_ids) || service_ids.length === 0) {
         return res.status(400).json({
             error: 'Missing required fields: shop_id, emp_id, service_ids[]'
@@ -2120,7 +3247,6 @@ app.post('/bookings', async (req, res) => {
     if (!Number.isInteger(customer_id) || customer_id < 0) {
         return res.status(400).json({ error: 'customer_id must be a non-negative integer (0 allowed for no specific customer)' });
     }
-    // MODIFIED: Added validation for the booking fee payment status
     if (customer_id > 0 && typeof booking_fee_paid !== 'boolean') {
         return res.status(400).json({ error: 'booking_fee_paid must be a boolean for registered customers' });
     }
@@ -2132,16 +3258,18 @@ app.post('/bookings', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await updateBookingStatuses(client);
+        await updateBookingStatuses(client); // Ensure booking statuses are up-to-date
 
         const currentTime = dayjs().utc().toDate();
 
-        const shopCheck = await client.query('SELECT shop_id, shop_name FROM shops WHERE shop_id = $1 AND is_active = TRUE', [shop_id]);
+        const shopCheck = await client.query('SELECT shop_id, shop_name, type FROM public.shops WHERE shop_id = $1 AND is_active = TRUE', [shop_id]);
         if (shopCheck.rowCount === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Shop not found or inactive' });
         }
-        const empCheck = await client.query('SELECT emp_id, emp_name FROM employees WHERE emp_id = $1 AND shop_id = $2 AND is_active = TRUE', [emp_id, shop_id]);
+        const shopType = shopCheck.rows[0].type; // Get shop segment (premium, mid, economy)
+
+        const empCheck = await client.query('SELECT emp_id, emp_name FROM public.employees WHERE emp_id = $1 AND shop_id = $2 AND is_active = TRUE', [emp_id, shop_id]);
         if (empCheck.rowCount === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Employee not found, inactive, or does not belong to this shop' });
@@ -2149,17 +3277,15 @@ app.post('/bookings', async (req, res) => {
 
         let customerName = 'Walk-in Customer';
         if (customer_id > 0) {
-            const customerCheck = await client.query('SELECT customer_id, customer_name FROM customers WHERE customer_id = $1', [customer_id]);
+            const customerCheck = await client.query('SELECT customer_id, customer_name FROM public.customers WHERE customer_id = $1', [customer_id]);
             if (customerCheck.rowCount === 0) {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ error: 'Customer not found' });
             }
             customerName = customerCheck.rows[0].customer_name;
-        }
 
-        if (customer_id > 0) {
             const existingBookingForCustomer = await client.query(`
-                SELECT booking_id FROM bookings
+                SELECT booking_id FROM public.bookings
                 WHERE emp_id = $1 AND customer_id = $2
                 AND DATE(join_time) = DATE($3)
                 AND status IN ('booked', 'in_service')
@@ -2171,7 +3297,7 @@ app.post('/bookings', async (req, res) => {
         }
 
         const empServicesCheck = await client.query(`
-            SELECT es.service_id FROM employee_services es
+            SELECT es.service_id FROM public.employee_services es
             WHERE es.emp_id = $1 AND es.service_id = ANY($2)
         `, [emp_id, service_ids]);
         if (empServicesCheck.rowCount !== service_ids.length) {
@@ -2183,7 +3309,7 @@ app.post('/bookings', async (req, res) => {
 
         const serviceQuery = `
             SELECT service_id, service_name, service_duration_minutes
-            FROM services
+            FROM public.services
             WHERE service_id = ANY($1)
         `;
         const { rows: services } = await client.query(serviceQuery, [service_ids]);
@@ -2200,7 +3326,7 @@ app.post('/bookings', async (req, res) => {
 
         const activeBookings = await client.query(`
             SELECT booking_id, join_time, end_time, service_duration_minutes, status
-            FROM bookings
+            FROM public.bookings
             WHERE emp_id = $1 AND status IN ('booked', 'in_service')
             ORDER BY join_time ASC;
         `, [emp_id]);
@@ -2242,12 +3368,58 @@ app.post('/bookings', async (req, res) => {
         const actualJoinTimeUTC = dayjs(actualJoinTime).utc().toDate();
         const endTimeUTC = dayjs(endTime).utc().toDate();
 
+        // --- Calculate Booking Fees ---
+        let calculatedFees = 0;
+        if (customer_id > 0) { // Only calculate fees for registered customers
+            const bookingFeesResult = await client.query(`
+                SELECT base_fee, high_rush_fee, low_rush_fee, discount_percent
+                FROM public.booking_fees
+                WHERE segment = $1 AND season_active = TRUE
+            `, [shopType]);
+
+            if (bookingFeesResult.rowCount === 0) {
+                await client.query('ROLLBACK');
+                return res.status(500).json({ error: 'No active booking fee rule found for shop segment' });
+            }
+
+            const { base_fee, high_rush_fee, low_rush_fee, discount_percent } = bookingFeesResult.rows[0];
+
+            const shopOverrideResult = await client.query(`
+                SELECT status FROM public.shop_booking_fee_overrides
+                WHERE shop_id = $1
+            `, [shop_id]);
+
+            let overrideStatus = 'normal';
+            if (shopOverrideResult.rowCount > 0) {
+                overrideStatus = shopOverrideResult.rows[0].status;
+            }
+
+            switch (overrideStatus) {
+                case 'normal':
+                    calculatedFees = base_fee;
+                    break;
+                case 'high':
+                    calculatedFees = high_rush_fee;
+                    break;
+                case 'low':
+                    calculatedFees = low_rush_fee;
+                    break;
+                default:
+                    calculatedFees = base_fee; // Fallback
+            }
+
+            if (discount_percent > 0) {
+                calculatedFees = calculatedFees * (1 - discount_percent / 100);
+            }
+            calculatedFees = Math.round(calculatedFees); // Ensure integer fee
+        }
+
         const insertBookingQuery = `
-            INSERT INTO bookings (
+            INSERT INTO public.bookings (
                 shop_id, emp_id, customer_id,
-                service_type, join_time, service_duration_minutes, end_time, status
+                service_type, join_time, service_duration_minutes, end_time, status, fees
             )
-            VALUES ($1, $2, $3, $4::json, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4::json, $5, $6, $7, $8, $9)
             RETURNING *
         `;
         const bookingValues = [
@@ -2258,40 +3430,39 @@ app.post('/bookings', async (req, res) => {
             actualJoinTimeUTC,
             totalDuration,
             endTimeUTC,
-            initialStatus
+            initialStatus,
+            calculatedFees // Insert the calculated fees
         ];
         const { rows: bookingRows } = await client.query(insertBookingQuery, bookingValues);
         const newBooking = bookingRows[0];
-        
-        // --- MODIFIED: ADDED WALLET TRANSACTION LOGIC ---
-        // Only create a wallet transaction if a customer_id is provided
+
+        // --- Wallet Transaction Logic ---
         if (customer_id > 0) {
-            const bookingFee = 3; // The fixed booking fee amount
             const walletTransactionQuery = `
-                INSERT INTO wallet_transactions (
+                INSERT INTO public.wallet_transactions (
                     customer_id, wallet_id, booking_id, amount, type, balance, status
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING *
             `;
-            const walletStatus = booking_fee_paid ? 'Paid' : 'Skipped';
+            const walletStatus = booking_fee_paid ? 'Paid' : 'Refund';
             const walletValues = [
                 customer_id,
-                customer_id, // wallet_id is the same as customer_id
+                customer_id, // wallet_id is the same as customer_id for customers
                 newBooking.booking_id,
-                bookingFee,
+                calculatedFees, // Use the calculated fees here
                 'bookingfees',
                 0, // Balance is 0 for booking fee transactions as per your example
                 walletStatus
             ];
             await client.query(walletTransactionQuery, walletValues);
         }
-        // --- END OF WALLET TRANSACTION LOGIC ---
+        // --- End of Wallet Transaction Logic ---
 
         await client.query('COMMIT');
         const queuePosition = await client.query(`
             SELECT COUNT(*) + 1 as position
-            FROM bookings
+            FROM public.bookings
             WHERE emp_id = $1
             AND status = 'booked'
             AND join_time < $2
@@ -2300,16 +3471,16 @@ app.post('/bookings', async (req, res) => {
         if (customer_id > 0) {
             await sendNotificationToCustomer(customer_id, {
                 title: 'Booking Confirmed!',
-                body: `Your booking (ID: ${newBooking.booking_id}) at ${shopCheck.rows[0].shop_name} with ${empCheck.rows[0].emp_name} is confirmed for ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
+                body: `Your booking (ID: ${newBooking.booking_id}) at ${shopCheck.rows[0].shop_name} with ${empCheck.rows[0].emp_name} is confirmed for ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}. Total fees: ₹${calculatedFees}.`,
                 url: `/userdashboard`,
                 bookingId: newBooking.booking_id,
                 type: 'new_booking_customer',
             });
         }
-        
+
         await sendNotificationToShop(shop_id, {
             title: 'New Booking Received!',
-            body: `A new booking (ID: ${newBooking.booking_id}) has been made with ${empCheck.rows[0].emp_name} for ${customerName} at ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
+            body: `A new booking (ID: ${newBooking.booking_id}) has been made with ${empCheck.rows[0].emp_name} for ${customerName} at ${dayjs(actualJoinTime).tz('Asia/Kolkata').format('hh:mm A')}. Total fees: ₹${calculatedFees}.`,
             url: `/shopdashboard`,
             bookingId: newBooking.booking_id,
             type: 'new_booking_shop',
@@ -2355,6 +3526,107 @@ app.post('/bookings', async (req, res) => {
         client.release();
     }
 });
+
+
+app.post('/create-razorpay-order', async (req, res) => {
+    try {
+        const { shop_id } = req.body; // Expecting shop_id from the request
+
+        if (!shop_id || !Number.isInteger(shop_id) || shop_id <= 0) {
+            return res.status(400).json({ error: 'Valid shop_id is required' });
+        }
+
+        const client = await pool.connect();
+        let amountToCharge = 0;
+
+        try {
+            // 1. Get shop type (segment)
+            const shopResult = await client.query(
+                'SELECT type FROM public.shops WHERE shop_id = $1 AND is_active = TRUE',
+                [shop_id]
+            );
+
+            if (shopResult.rowCount === 0) {
+                return res.status(404).json({ error: 'Shop not found or inactive' });
+            }
+            const shopType = shopResult.rows[0].type;
+
+            // 2. Query active season booking fees for the shop's segment
+            const bookingFeesResult = await client.query(`
+                SELECT base_fee, high_rush_fee, low_rush_fee, discount_percent
+                FROM public.booking_fees
+                WHERE segment = $1 AND season_active = TRUE
+            `, [shopType]);
+
+            if (bookingFeesResult.rowCount === 0) {
+                return res.status(500).json({ error: 'No active booking fee rule found for shop segment' });
+            }
+
+            const { base_fee, high_rush_fee, low_rush_fee, discount_percent } = bookingFeesResult.rows[0];
+
+            // 3. Check shop_booking_fee_overrides for the specific shop
+            const shopOverrideResult = await client.query(`
+                SELECT status FROM public.shop_booking_fee_overrides
+                WHERE shop_id = $1
+            `, [shop_id]);
+
+            let overrideStatus = 'normal'; // Default to normal if no override exists
+            if (shopOverrideResult.rowCount > 0) {
+                overrideStatus = shopOverrideResult.rows[0].status;
+            }
+
+            // 4. Apply the correct fee based on override status
+            switch (overrideStatus) {
+                case 'normal':
+                    amountToCharge = base_fee;
+                    break;
+                case 'high':
+                    amountToCharge = high_rush_fee;
+                    break;
+                case 'low':
+                    amountToCharge = low_rush_fee;
+                    break;
+                default:
+                    amountToCharge = base_fee; // Fallback
+            }
+
+            // 5. Apply discount if applicable
+            if (discount_percent > 0) {
+                amountToCharge = amountToCharge * (1 - discount_percent / 100);
+            }
+            amountToCharge = Math.round(amountToCharge); // Ensure integer amount for Razorpay
+
+            if (amountToCharge <= 0) {
+                return res.status(400).json({ error: 'Calculated fee is zero or invalid.' });
+            }
+
+            const options = {
+                amount: amountToCharge * 100, // Amount is in currency subunits (paise for INR)
+                currency: 'INR',
+                receipt: 'receipt_shop_fee_' + shop_id + '_' + Date.now(), // Unique receipt
+                notes: {
+                    shop_id: shop_id,
+                    fee_type: overrideStatus,
+                    base_fee_rule: bookingFeesResult.rows[0].id // Reference the booking_fees rule
+                }
+            };
+
+            const order = await razorpay.orders.create(options);
+            console.log("Razorpay Order Created:", order);
+            res.status(200).json(order);
+
+        } catch (error) {
+            console.error('Error creating Razorpay order:', error);
+            res.status(500).json({ error: 'Failed to create Razorpay order' });
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('Unhandled error in Razorpay order creation:', error);
+        res.status(500).json({ error: 'An unexpected error occurred.' });
+    }
+});
+
 // Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' is imported
 
 // Assuming 'pool' is your PostgreSQL connection pool and 'dayjs' is imported
@@ -2495,17 +3767,17 @@ app.post('/shop/bookings/cancel', async (req, res) => {
 
         const bookingToCancel = bookingCheck.rows[0];
 
-        if (['completed', 'cancelled'].includes(bookingToCancel.status)) {
+        if (['completed', 'cancelled', 'cancelled_by_shop'].includes(bookingToCancel.status)) { // Added 'cancelled_by_shop' here
             await client.query('ROLLBACK');
             return res.status(400).json({ error: `Booking is already ${bookingToCancel.status}. Cannot cancel.` });
         }
 
         const { emp_id, join_time, end_time, service_duration_minutes, customer_id } = bookingToCancel;
 
-        // 3. Update Booking Status
+        // 3. Update Booking Status to 'cancelled_by_shop'
         const cancelQuery = `
             UPDATE bookings
-            SET status = 'cancelled'
+            SET status = 'cancelled_by_shop'
             WHERE booking_id = $1
             RETURNING *;
         `;
@@ -2521,11 +3793,11 @@ app.post('/shop/bookings/cancel', async (req, res) => {
         // 5. Send Notification to Customer about Cancellation
         if (customer_id) {
             const notificationPayload = {
-                title: 'Booking Cancelled!',
-                body: `Your booking (ID: ${booking_id}) on ${dayjs.utc(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD')} at ${dayjs.utc(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the shop.`, // Formatted in IST
+                title: 'Booking Cancelled by Shop!', // Updated title
+                body: `Your booking (ID: ${booking_id}) on ${dayjs.utc(join_time).tz('Asia/Kolkata').format('YYYY-MM-DD')} at ${dayjs.utc(join_time).tz('Asia/Kolkata').format('hh:mm A')} has been cancelled by the shop.`, // Updated body
                 url: `/userdashboard`, // Link to customer's dashboard or specific booking
                 bookingId: booking_id,
-                type: 'booking_cancelled', // Custom type for client-side handling
+                type: 'booking_cancelled_by_shop', // Custom type for client-side handling
             };
             await sendNotificationToCustomer(customer_id, notificationPayload);
             console.log(`Cancellation notification sent to customer ${customer_id} for booking ${booking_id}.`);
@@ -2545,7 +3817,7 @@ app.post('/shop/bookings/cancel', async (req, res) => {
         await client.query('COMMIT');
 
         res.status(200).json({
-            message: 'Booking cancelled successfully by shop',
+            message: 'Booking cancelled successfully by shop', // Updated message
             cancelled_booking: {
                 booking_id: cancelledBooking.booking_id,
                 status: cancelledBooking.status,
@@ -2692,7 +3964,172 @@ async function updateSubsequentBookings(client, empId, cancelledBookingOriginalE
 // --- Route to get bookings for a specific customer with filters and pagination ---
 // --- Route to get bookings for a specific customer with filters and pagination ---
 
+async function shiftBookingsDueToDelay(client, empId, delayedBookingOriginalEndTimeUTC, delayMinutes, shopId) {
+    console.log(`Shifting subsequent bookings for employee ${empId} due to a ${delayMinutes} minute delay.`);
 
+    // Fetch bookings for the employee that start at or after the original end time of the delayed booking
+    const subsequentBookingsQuery = `
+        SELECT booking_id, customer_id, join_time, end_time, service_duration_minutes, status
+        FROM bookings
+        WHERE emp_id = $1
+        AND status IN ('booked', 'in_service')
+        AND join_time >= $2
+        ORDER BY join_time ASC;
+    `;
+    const { rows: subsequentBookings } = await client.query(subsequentBookingsQuery, [empId, delayedBookingOriginalEndTimeUTC]);
+
+    if (subsequentBookings.length === 0) {
+        console.log(`No subsequent bookings found for employee ${empId} after ${dayjs.utc(delayedBookingOriginalEndTimeUTC).format()}.`);
+        return;
+    }
+
+    const delayMs = delayMinutes * 60000; // Convert minutes to milliseconds
+
+    for (const booking of subsequentBookings) {
+        // Parse original times as UTC Date objects
+        const originalJoinTime = dayjs.utc(booking.join_time).toDate();
+        const originalEndTime = dayjs.utc(booking.end_time).toDate();
+        const customerId = booking.customer_id;
+
+        // Calculate new join and end times by adding the delay
+        const newJoinTime = new Date(originalJoinTime.getTime() + delayMs);
+        const newEndTime = new Date(originalEndTime.getTime() + delayMs);
+
+        // Convert new times to UTC Date objects for database insertion
+        const newJoinTimeUTC = dayjs(newJoinTime).utc().toDate();
+        const newEndTimeUTC = dayjs(newEndTime).utc().toDate();
+
+        // Update the booking in the database
+        await client.query(
+            `UPDATE bookings
+             SET join_time = $1, end_time = $2
+             WHERE booking_id = $3`,
+            [newJoinTimeUTC, newEndTimeUTC, booking.booking_id]
+        );
+        console.log(`Shifted booking ${booking.booking_id}: Old join_time: ${dayjs.utc(originalJoinTime).tz('Asia/Kolkata').format('hh:mm A')}, New join_time: ${dayjs.utc(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}`);
+
+        // Notify Customer about time shift
+        if (customerId) {
+            await sendNotificationToCustomer(customerId, {
+                title: 'Booking Delayed!',
+                body: `Your booking (ID: ${booking.booking_id}) has been delayed by ${delayMinutes} minutes. New start time: ${dayjs.utc(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
+                url: `/userdashboard`,
+                bookingId: booking.booking_id,
+                type: 'time_delayed',
+            });
+        }
+
+        // Notify Shop about queue changes
+        if (shopId) {
+            const empNameResult = await client.query(`SELECT emp_name FROM employees WHERE emp_id = $1`, [empId]);
+            const empName = empNameResult.rows[0]?.emp_name || 'an employee';
+            const customerNameResult = await client.query(`SELECT customer_name FROM customers WHERE customer_id = $1`, [customerId]);
+            const customerName = customerNameResult.rows[0]?.customer_name || 'A customer';
+
+            await sendNotificationToShop(shopId, {
+                title: 'Queue Updated!',
+                body: `Booking (ID: ${booking.booking_id}) for ${customerName} with ${empName} has been delayed. New start time: ${dayjs.utc(newJoinTime).tz('Asia/Kolkata').format('hh:mm A')}.`,
+                url: `/shopdashboard`,
+                bookingId: booking.booking_id,
+                type: 'shop_queue_update',
+            });
+        }
+    }
+}
+
+app.put('/editbookingbyshops', async (req, res) => {
+    // Expected request body: { booking_id: number, shop_id: number, delay_minutes: number }
+    const { booking_id, shop_id, delay_minutes } = req.body;
+
+    // --- Validation ---
+    if (!booking_id || !shop_id || delay_minutes === undefined || delay_minutes <= 0) {
+        return res.status(400).json({
+            error: 'Missing or invalid required fields: booking_id, shop_id, delay_minutes (must be a positive number)'
+        });
+    }
+    if (!Number.isInteger(booking_id) || booking_id <= 0) {
+        return res.status(400).json({ error: 'booking_id must be a positive integer' });
+    }
+    if (!Number.isInteger(shop_id) || shop_id <= 0) {
+        return res.status(400).json({ error: 'shop_id must be a positive integer' });
+    }
+    if (!Number.isInteger(delay_minutes) || delay_minutes <= 0) {
+        return res.status(400).json({ error: 'delay_minutes must be a positive integer' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN'); // Start transaction
+
+        // 1. Fetch the booking to be delayed
+        const bookingResult = await client.query(
+            `SELECT booking_id, shop_id, emp_id, customer_id, join_time, end_time, service_duration_minutes, status
+             FROM bookings
+             WHERE booking_id = $1 FOR UPDATE;`, // FOR UPDATE locks the row
+            [booking_id]
+        );
+
+        if (bookingResult.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Booking not found' });
+        }
+
+        const booking = bookingResult.rows[0];
+
+        // Authorization check: Ensure the shop_id matches the booking's shop_id
+        if (booking.shop_id !== shop_id) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: 'Unauthorized: This booking does not belong to your shop.' });
+        }
+
+        // Only allow modification for 'booked' or 'in_service' bookings
+        if (!['booked', 'in_service'].includes(booking.status)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: `Booking status '${booking.status}' cannot be modified.` });
+        }
+
+        const originalEndTime = dayjs.utc(booking.end_time).toDate(); // Original end time in UTC
+        const newEndTime = new Date(originalEndTime.getTime() + delay_minutes * 60000); // Calculate new end time
+        const newServiceDurationMinutes = booking.service_duration_minutes + delay_minutes;
+
+        // 2. Update the current booking's end_time and service_duration_minutes
+        await client.query(
+            `UPDATE bookings
+             SET end_time = $1, service_duration_minutes = $2
+             WHERE booking_id = $3;`,
+            [dayjs(newEndTime).utc().toDate(), newServiceDurationMinutes, booking_id] // Store new end time as UTC
+        );
+        console.log(`Booking ${booking_id} end_time extended by ${delay_minutes} minutes. New end_time: ${dayjs(newEndTime).tz('Asia/Kolkata').format('hh:mm A')}`);
+
+        // 3. Shift subsequent bookings and send notifications
+        await shiftBookingsDueToDelay(client, booking.emp_id, originalEndTime, delay_minutes, shop_id);
+
+        await client.query('COMMIT'); // Commit transaction
+
+        res.status(200).json({
+            message: `Booking ${booking_id} successfully delayed by ${delay_minutes} minutes. Subsequent bookings have been shifted.`,
+            updatedBooking: {
+                booking_id: booking.booking_id,
+                new_end_time: dayjs(newEndTime).tz('Asia/Kolkata').format('MMM DD, YYYY - hh:mm A'),
+                new_service_duration_minutes: newServiceDurationMinutes
+            }
+        });
+
+    } catch (error) {
+        if (client) {
+            await client.query('ROLLBACK'); // Rollback transaction on error
+        }
+        console.error('Error in /editbookingbyshops:', error);
+        res.status(500).json({
+            error: 'Failed to update booking time',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    } finally {
+        if (client) {
+            client.release(); // Release client back to pool
+        }
+    }
+});
 
 
 app.post('/getBookingsbycustomer', async (req, res) => {
