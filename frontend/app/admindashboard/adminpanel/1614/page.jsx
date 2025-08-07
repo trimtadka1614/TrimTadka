@@ -10,33 +10,46 @@ import {
   CheckCircle,
   BarChart,
   RefreshCcw,
-  ArrowUpCircle,
-  ArrowDownCircle,
   Hourglass,
   ExternalLink,
-  Users,
-  CreditCard,
+  Wallet,
+  Coins,
+  ArrowRightCircle,
+  ArrowLeftCircle,
   TrendingUp,
-  Briefcase,
-  Percent,
+  CreditCard,
+  Gift,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  DollarSign,
+  Users,
+  Store,
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 
-// Use this to style the page and modal with Tailwind CSS.
-// Tailwind is assumed to be available.
+// Assumes Tailwind CSS is available
 const App = () => {
-  const [transactions, setTransactions] = useState([]);
+  const [customerTransactions, setCustomerTransactions] = useState([]);
+  const [shopTransactions, setShopTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showUpiModal, setShowUpiModal] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [transactionType, setTransactionType] = useState(null); // 'customer' or 'shop'
   const [isGettingUpi, setIsGettingUpi] = useState(false);
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
   const [upiLink, setUpiLink] = useState(null);
 
-  // State for custom messages (to replace alert())
+  // Pagination states
+  const [currentPageCustomer, setCurrentPageCustomer] = useState(1);
+  const [currentPageShop, setCurrentPageShop] = useState(1);
+  const [currentPageCustomerAll, setCurrentPageCustomerAll] = useState(1);
+  const [currentPageShopAll, setCurrentPageShopAll] = useState(1);
+  const transactionsPerPage = 10;
+
+  // State for custom messages
   const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('success'); // 'success' or 'error'
+  const [messageType, setMessageType] = useState('success');
 
   const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 
@@ -44,8 +57,8 @@ const App = () => {
   const AlertMessage = ({ message, type, onClose }) => {
     if (!message) return null;
     return createPortal(
-      <div className="fixed top-4 right-4 z-50 p-4 rounded-xl shadow-lg border animate-slide-in-from-right transition-transform">
-        <div className={`flex items-center space-x-3 ${type === 'success' ? 'bg-green-700 border-green-500 text-green-100' : 'bg-red-700 border-red-500 text-red-100'}`}>
+      <div className="fixed top-4 right-4 z-50 p-3 rounded-xl shadow-lg border animate-slide-in-from-right transition-transform">
+        <div className={`flex items-center space-x-2 ${type === 'success' ? 'bg-green-700 border-green-500 text-green-100' : 'bg-red-700 border-red-500 text-red-100'} p-2 rounded-lg`}>
           {type === 'success' ? <CheckCircle className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
           <span className="text-sm font-medium">{message}</span>
           <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-600 transition-colors">
@@ -64,18 +77,26 @@ const App = () => {
   };
 
   /**
-   * Fetches all wallet transactions for the admin dashboard.
+   * Fetches all wallet transactions for customers and shops concurrently.
    */
-  const fetchTransactions = useCallback(async () => {
+  const fetchAllTransactions = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/wallet-transactions`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch admin transactions');
+      const [customerResponse, shopResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/admin/wallet-transactions`),
+        fetch(`${API_BASE_URL}/admin/shop-wallet-transactions`)
+      ]);
+
+      if (!customerResponse.ok || !shopResponse.ok) {
+        throw new Error('Failed to fetch transaction data.');
       }
-      const data = await response.json();
-      setTransactions(data);
+
+      const customerData = await customerResponse.json();
+      const shopData = await shopResponse.json();
+
+      setCustomerTransactions(customerData);
+      setShopTransactions(shopData);
     } catch (err) {
       console.error('Error fetching transactions:', err);
       setError('Failed to load transaction data.');
@@ -84,36 +105,33 @@ const App = () => {
     }
   }, []);
 
-  // Fetch transactions on initial component load
   useEffect(() => {
-    fetchTransactions();
-  }, [fetchTransactions]);
+    fetchAllTransactions();
+  }, [fetchAllTransactions]);
 
   /**
    * Handles the admin's action to get a UPI link for a pending withdrawal.
-   * This function does not update the database.
-   * @param {object} transaction The transaction object to process.
    */
-  const handlePayWithdrawal = async (transaction) => {
+  const handlePayWithdrawal = async (transaction, type) => {
     setIsGettingUpi(true);
     setSelectedTransaction(transaction);
+    setTransactionType(type);
     setUpiLink(null);
 
+    const endpoint = type === 'customer'
+      ? `${API_BASE_URL}/admin/pay-withdrawal/${transaction.id}`
+      : `${API_BASE_URL}/admin/shop/pay-withdrawal/${transaction.id}`;
+
     try {
-      // The API endpoint should return a full UPI payment link
-      const response = await fetch(`${API_BASE_URL}/admin/pay-withdrawal/${transaction.id}`, {
-        method: 'GET',
-      });
+      const response = await fetch(endpoint, { method: 'GET' });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to process withdrawal payment.');
+        throw new Error(errorData.error || 'Failed to get withdrawal details.');
       }
 
       const responseData = await response.json();
       setUpiLink(responseData.upiLink);
-
-      // Show the UPI modal with the link
       setShowUpiModal(true);
 
     } catch (err) {
@@ -126,45 +144,38 @@ const App = () => {
 
   /**
    * Confirms the payment and updates the transaction status in the database.
-   * This is called from the modal after the admin has manually paid.
-   * @param {string} transactionId The ID of the transaction to confirm.
    */
   const handleConfirmPayment = async (transactionId) => {
     setIsConfirmingPayment(true);
+    
+    const endpoint = transactionType === 'customer'
+      ? `${API_BASE_URL}/admin/confirm-withdrawal/${transactionId}`
+      : `${API_BASE_URL}/admin/shop/confirm-withdrawal/${transactionId}`;
+
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/confirm-withdrawal/${transactionId}`, {
-        method: 'PUT',
-      });
+      const response = await fetch(endpoint, { method: 'PUT' });
 
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to confirm withdrawal payment.');
       }
 
-      // Update the transaction status in the local state
-      setTransactions(prevTransactions => {
-        const updatedTransactions = prevTransactions.map(tx =>
-          tx.id === transactionId ? { ...tx, status: 'Withdrawn' } : tx
+      if (transactionType === 'customer') {
+        setCustomerTransactions(prevTransactions =>
+          prevTransactions.map(tx =>
+            tx.id === transactionId ? { ...tx, status: 'Withdrawn' } : tx
+          )
         );
-        // Add a new transaction for the debit
-        const confirmedTx = prevTransactions.find(tx => tx.id === transactionId);
-        if (confirmedTx) {
-          const newTx = {
-            ...confirmedTx,
-            amount: -confirmedTx.amount,
-            type: 'withdrawal',
-            status: 'Withdrawn',
-            id: Date.now(), // Use a temporary id for client-side rendering
-            created_at: new Date().toISOString()
-          };
-          return [newTx, ...updatedTransactions];
-        }
-        return updatedTransactions;
-      });
+      } else {
+        setShopTransactions(prevTransactions =>
+          prevTransactions.map(tx =>
+            tx.id === transactionId ? { ...tx, status: 'Withdrawn' } : tx
+          )
+        );
+      }
 
-      // Close the modal and show a success message
       setShowUpiModal(false);
-      showMessage('Withdrawal successfully confirmed and customer wallet updated!', 'success');
+      showMessage('Withdrawal successfully confirmed!', 'success');
 
     } catch (err) {
       console.error('Error confirming withdrawal:', err);
@@ -175,126 +186,46 @@ const App = () => {
   };
 
   /**
-   * Displays key metrics in a card layout.
+   * Renders a section with a table of transactions and pagination.
    */
-  const MetricCards = ({ transactions }) => {
-    // New metrics calculations
-    const totalRevenue = transactions
-      .filter(tx => tx.type === 'bookingfees' && tx.status === 'Paid')
-      .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
-
-    const totalPaidBookings = transactions
-      .filter(tx => tx.type === 'bookingfees' && tx.status === 'Paid')
-      .length;
-    
-    const totalSkippedBookings = transactions
-      .filter(tx => tx.type === 'bookingfees' && tx.status === 'Skipped')
-      .length;
-
-    const bookingSuccessRate = totalPaidBookings + totalSkippedBookings > 0
-      ? (totalPaidBookings / (totalPaidBookings + totalSkippedBookings)) * 100
-      : 0;
-
-    const totalConfirmedWithdrawals = transactions
-      .filter(tx => tx.type === 'withdrawal' && tx.status === 'Withdrawn')
-      .reduce((sum, tx) => sum + Math.abs(parseFloat(tx.amount)), 0);
-
-    const netProfit = totalRevenue - totalConfirmedWithdrawals;
-
-    const netProfitPercentage = totalRevenue > 0
-      ? (netProfit / totalRevenue) * 100
-      : 0;
-
-    const pendingRequests = transactions
-      .filter(tx => tx.status === 'Requested')
-      .length;
-
-    const uniqueCustomers = new Set(transactions.map(tx => tx.customer_id)).size;
-
-    const cards = [
-      {
-        title: 'Total Revenue',
-        value: `₹${totalRevenue.toFixed(2)}`,
-        icon: <TrendingUp className="h-6 w-6 text-green-400" />,
-        color: 'bg-green-900'
-      },
-      {
-        title: 'Net Profit',
-        value: `₹${netProfit.toFixed(2)}`,
-        percentage: `${netProfitPercentage.toFixed(2)}%`,
-        icon: <Briefcase className="h-6 w-6 text-purple-400" />,
-        color: 'bg-purple-900'
-      },
-      {
-        title: 'Booking Success',
-        value: `${totalPaidBookings} / ${totalPaidBookings + totalSkippedBookings}`,
-        percentage: `${bookingSuccessRate.toFixed(2)}%`,
-        icon: <CheckCircle className="h-6 w-6 text-emerald-400" />,
-        color: 'bg-emerald-900'
-      },
-      {
-        title: 'Total Withdrawals',
-        value: `₹${totalConfirmedWithdrawals.toFixed(2)}`,
-        icon: <ArrowDownCircle className="h-6 w-6 text-red-400" />,
-        color: 'bg-red-900'
-      },
-      {
-        title: 'Pending Requests',
-        value: pendingRequests,
-        icon: <Hourglass className="h-6 w-6 text-yellow-400" />,
-        color: 'bg-yellow-900'
-      },
-      {
-        title: 'Unique Customers',
-        value: uniqueCustomers,
-        icon: <Users className="h-6 w-6 text-blue-400" />,
-        color: 'bg-blue-900'
-      },
-    ];
-
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        {cards.map((card, index) => (
-          <div key={index} className={`flex items-center p-6 ${card.color} rounded-2xl shadow-lg border border-gray-700 transition-transform hover:scale-105 duration-200`}>
-            <div className="flex-shrink-0 mr-4 p-3 rounded-full bg-gray-900 shadow-md">
-              {card.icon}
-            </div>
-            <div className="flex flex-col justify-center">
-              <p className="text-sm font-semibold uppercase tracking-wide text-gray-400">{card.title}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-50">{card.value}</p>
-              {card.percentage && (
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-300 flex items-center">
-                  <Percent className="h-3 w-3 mr-1 text-gray-400" />
-                  {card.percentage}
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-
-  /**
-   * Renders a section with a table of transactions filtered by status.
-   */
-  const TransactionSection = ({ title, transactions, onPay }) => {
+  const TransactionSection = ({ title, transactions, onPay, type, currentPage, setCurrentPage }) => {
     const getStatusClass = (status) => {
       switch (status) {
         case 'Paid': return 'bg-emerald-700 text-emerald-100';
+        case 'Received': return 'bg-emerald-700 text-emerald-100';
         case 'Withdrawn': return 'bg-red-700 text-red-100';
         case 'Requested': return 'bg-yellow-700 text-yellow-100 animate-pulse';
-        case 'Skipped': return 'bg-gray-500 text-gray-100';
+        case 'Refund': return 'bg-blue-700 text-blue-100';
         default: return 'bg-gray-600 text-gray-100';
       }
     };
-    
-    // Sort transactions by date descending
+
     const sortedTransactions = [...transactions].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const totalPages = Math.ceil(sortedTransactions.length / transactionsPerPage);
+    const startIndex = (currentPage - 1) * transactionsPerPage;
+    const endIndex = startIndex + transactionsPerPage;
+    const currentTransactions = sortedTransactions.slice(startIndex, endIndex);
+
+    const handleNextPage = () => {
+      setCurrentPage(prev => Math.min(prev + 1, totalPages));
+    };
+
+    const handlePrevPage = () => {
+      setCurrentPage(prev => Math.max(prev - 1, 1));
+    };
+
+    const getIconForType = (txType) => {
+      switch (txType) {
+        case 'bookingfees': return <CreditCard className="h-4 w-4 mr-1 text-emerald-400" />;
+        case 'cashback': return <Gift className="h-4 w-4 mr-1 text-purple-400" />;
+        case 'refund': return <ArrowLeftCircle className="h-4 w-4 mr-1 text-blue-400" />;
+        case 'withdrawal': return <ArrowDownCircle className="h-4 w-4 mr-1 text-red-400" />;
+        default: return <Coins className="h-4 w-4 mr-1 text-gray-400" />;
+      }
+    };
 
     return (
-      <div className="mb-8">
+      <div className="mb-10">
         <h2 className="text-xl font-bold text-gray-100 flex items-center mb-4">
           <Receipt className="h-5 w-5 text-gray-400 mr-2" />
           {title} ({transactions.length})
@@ -303,49 +234,36 @@ const App = () => {
           <table className="min-w-full divide-y divide-gray-700">
             <thead className="bg-gradient-to-r from-gray-800 to-gray-900">
               <tr>
+                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">DATE</th>
                 <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  DATE
+                  {type === 'customer' ? 'CUSTOMER' : 'SHOP'}
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  CUSTOMER
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  PH. NUMBER
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  AMOUNT
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  TYPE
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  STATUS
-                </th>
-                <th scope="col" className="px-6 py-3 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  ACTIONS
-                </th>
+                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">PH. NUMBER</th>
+                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">AMOUNT</th>
+                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">TYPE</th>
+                <th scope="col" className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">STATUS</th>
+                <th scope="col" className="px-6 py-3 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider">ACTIONS</th>
               </tr>
             </thead>
             <tbody className="bg-gray-800 divide-y divide-gray-700">
-              {sortedTransactions.length > 0 ? (
-                sortedTransactions.map((tx) => (
+              {currentTransactions.length > 0 ? (
+                currentTransactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-gray-700 transition-colors duration-150">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {new Date(tx.created_at).toLocaleDateString()}
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{new Date(tx.created_at).toLocaleDateString()}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100">
-                      {tx.customer_name}
+                      {type === 'customer' ? tx.customer_name : tx.shop_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {tx.customer_ph_number || 'N/A'}
+                      {type === 'customer' ? tx.customer_ph_number : tx.shop_ph_number || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`font-bold tracking-wider ${tx.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                      <span className={`font-bold tracking-wider ${tx.amount < 0 || ['withdrawal', 'refund'].includes(tx.type) ? 'text-red-400' : 'text-green-400'}`}>
                         ₹{Math.abs(parseFloat(tx.amount)).toFixed(2)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        <span className="capitalize">{tx.type}</span>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 flex items-center">
+                      {getIconForType(tx.type)}
+                      <span className="capitalize">{tx.type.replace(/([A-Z])/g, ' $1').trim()}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <span className={`px-2 py-1 inline-flex text-[10px] leading-4 font-bold rounded-full uppercase tracking-wider ${getStatusClass(tx.status)}`}>
@@ -355,7 +273,7 @@ const App = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                       {tx.status === 'Requested' && (
                         <button
-                          onClick={() => onPay(tx)}
+                          onClick={() => onPay(tx, type)}
                           disabled={isGettingUpi}
                           className={`inline-flex items-center px-4 py-2 border border-transparent rounded-full shadow-sm text-xs font-bold text-white transition-colors
                             ${isGettingUpi && selectedTransaction?.id === tx.id
@@ -384,9 +302,7 @@ const App = () => {
                   <td colSpan="7" className="px-6 py-12 text-center text-gray-400">
                     <div className="flex flex-col items-center space-y-2">
                       <Receipt className="h-10 w-10 text-gray-600" />
-                      <p className="text-sm font-semibold uppercase tracking-wider">
-                        NO TRANSACTIONS FOUND
-                      </p>
+                      <p className="text-sm font-semibold uppercase tracking-wider">NO TRANSACTIONS FOUND</p>
                     </div>
                   </td>
                 </tr>
@@ -394,10 +310,166 @@ const App = () => {
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="flex justify-center items-center mt-4 space-x-2">
+            <button
+              onClick={handlePrevPage}
+              disabled={currentPage === 1}
+              className="p-2 rounded-full bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowLeftCircle className="h-5 w-5" />
+            </button>
+            <span className="text-sm text-gray-300 font-medium">Page {currentPage} of {totalPages}</span>
+            <button
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-full bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowRightCircle className="h-5 w-5" />
+            </button>
+          </div>
+        )}
       </div>
     );
   };
+  
+  /**
+   * Displays key metrics in a card layout.
+   */
+  const MetricCards = ({ customerTransactions, shopTransactions }) => {
+  // Calculate metrics based on the data and user-provided logic
+  const totalPlatformRevenueFromBookings = customerTransactions
+    .filter(tx => tx.type === 'bookingfees' && tx.status === 'Paid')
+    .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
 
+  const totalShopReceivedBookingFees = shopTransactions
+    .filter(tx => tx.type === 'bookingfees' && tx.status === 'Received')
+    .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+
+  const totalSubscriptionRevenue = shopTransactions
+    .filter(tx => tx.type === 'subscription' && tx.status === 'Paid')
+    .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+
+  const totalCustomerRefunds = customerTransactions
+    .filter(tx => tx.type === 'bookingfees' && tx.status === 'Refund')
+    .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+
+  // New calculation for pending withdrawals
+  const totalPendingCustomerWithdrawals = customerTransactions
+    .filter(tx => tx.type === 'withdrawal' && tx.status === 'Requested')
+    .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+
+  const totalPendingShopWithdrawals = shopTransactions
+    .filter(tx => tx.type === 'withdrawal' && tx.status === 'Requested')
+    .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+    
+  // New calculations for cashback
+  const totalCustomerCashback = customerTransactions
+    .filter(tx => tx.type === 'cashback' && tx.status === 'Received')
+    .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+  
+  const totalShopCashback = shopTransactions
+    .filter(tx => tx.type === 'cashback' && tx.status === 'Received')
+    .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+
+  // Existing metrics
+  const totalCashback = totalCustomerCashback + totalShopCashback;
+  const shopShares = totalShopReceivedBookingFees;
+  const totalOverallRevenue = totalPlatformRevenueFromBookings + totalSubscriptionRevenue;
+  const netPlatformRevenue = totalOverallRevenue - totalCashback - shopShares - totalCustomerRefunds;
+
+  const cards = [
+    {
+      title: 'Net Platform Revenue',
+      value: `₹${netPlatformRevenue.toFixed(2)}`,
+      icon: <TrendingUp className="h-6 w-6 text-green-400" />,
+      color: 'bg-emerald-900',
+      description: 'Total revenue minus all expenses.',
+    },
+    {
+      title: 'Total Platform Revenue from Bookings',
+      value: `₹${totalPlatformRevenueFromBookings.toFixed(2)}`,
+      icon: <TrendingUp className="h-6 w-6 text-green-400" />,
+      color: 'bg-emerald-900',
+      description: 'Total revenue from booking fees paid by customers.',
+    },
+    {
+      title: 'Total Revenue from Subscriptions',
+      value: `₹${totalSubscriptionRevenue.toFixed(2)}`,
+      icon: <CreditCard className="h-6 w-6 text-pink-400" />,
+      color: 'bg-pink-900',
+      description: 'Revenue from monthly or yearly subscriptions.',
+    },
+    {
+      title: 'Total Overall Revenue',
+      value: `₹${totalOverallRevenue.toFixed(2)}`,
+      icon: <DollarSign className="h-6 w-6 text-yellow-400" />,
+      color: 'bg-yellow-900',
+      description: 'Sum of subscription and platform booking fees.',
+    },
+    {
+      title: 'Shop Shares',
+      value: `₹${shopShares.toFixed(2)}`,
+      icon: <Store className="h-6 w-6 text-teal-400" />,
+      color: 'bg-teal-900',
+      description: 'Total booking fees earned by the shops.',
+    },
+    {
+      title: 'Total Cashback Paid',
+      value: `₹${totalCashback.toFixed(2)}`,
+      icon: <Gift className="h-6 w-6 text-purple-400" />,
+      color: 'bg-purple-900',
+      description: 'Combined cashback given to customers and shops.',
+    },
+    // New cards
+    {
+      title: 'Pending Customer Withdrawals',
+      value: `₹${totalPendingCustomerWithdrawals.toFixed(2)}`,
+      icon: <Users className="h-6 w-6 text-indigo-400" />,
+      color: 'bg-indigo-900',
+      description: 'Total withdrawal requests from customers.',
+    },
+    {
+      title: 'Pending Shop Withdrawals',
+      value: `₹${totalPendingShopWithdrawals.toFixed(2)}`,
+      icon: <Store className="h-6 w-6 text-teal-400" />,
+      color: 'bg-teal-900',
+      description: 'Total withdrawal requests from shops.',
+    },
+    {
+      title: 'Total Customer Cashback',
+      value: `₹${totalCustomerCashback.toFixed(2)}`,
+      icon: <Gift className="h-6 w-6 text-purple-400" />,
+      color: 'bg-purple-900',
+      description: 'Cashback provided to customers.',
+    },
+    {
+      title: 'Total Shop Cashback',
+      value: `₹${totalShopCashback.toFixed(2)}`,
+      icon: <Gift className="h-6 w-6 text-purple-400" />,
+      color: 'bg-purple-900',
+      description: 'Cashback provided to shops.',
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      {cards.map((card, index) => (
+        <div key={index} className={`flex flex-col p-6 ${card.color} rounded-2xl shadow-lg border border-gray-700 transition-transform hover:scale-105 duration-200`}>
+          <div className="flex justify-between items-start mb-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-400">{card.title}</h3>
+            <div className="flex-shrink-0 p-2 rounded-full bg-gray-900 shadow-md">
+              {card.icon}
+            </div>
+          </div>
+          <p className="mt-1 text-2xl font-bold text-gray-50">{card.value}</p>
+          <p className="text-xs text-gray-400 mt-2">{card.description}</p>
+        </div>
+      ))}
+    </div>
+  );
+};
+  
   /**
    * Modal to display UPI QR code and link for payment.
    */
@@ -421,15 +493,7 @@ const App = () => {
                 <div className="bg-gray-900 p-4 rounded-lg shadow-inner mb-4">
                   <QRCode value={upiLink} size={150} fgColor="#FFFFFF" bgColor="#1F2937" />
                 </div>
-                <a
-                  href={upiLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 transition-colors"
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Open in UPI App
-                </a>
+               
               </div>
             ) : (
               <div className="flex items-center justify-center">
@@ -464,11 +528,11 @@ const App = () => {
       document.body
     );
   };
-
-  const allTransactions = transactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  const requestedTransactions = allTransactions.filter(tx => tx.status === 'Requested');
-  const paidTransactions = allTransactions.filter(tx => tx.status === 'Paid');
-  const withdrawnTransactions = allTransactions.filter(tx => tx.status === 'Withdrawn' || tx.type === 'withdrawal');
+  
+  const customerRequested = customerTransactions.filter(tx => tx.status === 'Requested');
+  const shopRequested = shopTransactions.filter(tx => tx.status === 'Requested');
+  const allCustomerTransactions = customerTransactions.filter(tx => tx.status !== 'Requested');
+  const allShopTransactions = shopTransactions.filter(tx => tx.status !== 'Requested');
   
   return (
     <div className="p-4 sm:p-8 min-h-screen bg-gray-900 font-sans antialiased text-gray-100">
@@ -480,7 +544,7 @@ const App = () => {
             Admin Dashboard
           </h1>
           <button
-            onClick={fetchTransactions}
+            onClick={fetchAllTransactions}
             className="px-4 py-2 bg-gray-700 text-gray-200 rounded-full text-sm font-semibold hover:bg-gray-600 transition-colors flex items-center"
           >
             <RefreshCcw className="h-4 w-4 mr-2" />
@@ -490,7 +554,10 @@ const App = () => {
 
         {/* Metric Cards Section */}
         {!isLoading && !error && (
-          <MetricCards transactions={transactions} />
+          <MetricCards 
+            customerTransactions={customerTransactions}
+            shopTransactions={shopTransactions}
+          />
         )}
 
         {/* Content Section */}
@@ -518,25 +585,44 @@ const App = () => {
 
           {!isLoading && !error && (
             <>
-              {/* Requested Transactions Section */}
+              {/* Customer Requested Transactions Section */}
               <TransactionSection
-                title="Requested Transactions"
-                transactions={requestedTransactions}
+                title="Customer Withdrawal Requests"
+                transactions={customerRequested}
                 onPay={handlePayWithdrawal}
-              />
-
-              {/* Paid Transactions Section */}
-              <TransactionSection
-                title="Paid Transactions"
-                transactions={paidTransactions}
-                onPay={handlePayWithdrawal}
+                type="customer"
+                currentPage={currentPageCustomer}
+                setCurrentPage={setCurrentPageCustomer}
               />
               
-              {/* Withdrawn Transactions Section */}
+              {/* Shop Requested Transactions Section */}
               <TransactionSection
-                title="Withdrawn Transactions"
-                transactions={withdrawnTransactions}
+                title="Shop Withdrawal Requests"
+                transactions={shopRequested}
                 onPay={handlePayWithdrawal}
+                type="shop"
+                currentPage={currentPageShop}
+                setCurrentPage={setCurrentPageShop}
+              />
+
+              {/* All Other Customer Transactions Section */}
+              <TransactionSection
+                title="All Customer Transactions"
+                transactions={allCustomerTransactions}
+                onPay={handlePayWithdrawal}
+                type="customer"
+                currentPage={currentPageCustomerAll}
+                setCurrentPage={setCurrentPageCustomerAll}
+              />
+              
+              {/* All Other Shop Transactions Section */}
+              <TransactionSection
+                title="All Shop Transactions"
+                transactions={allShopTransactions}
+                onPay={handlePayWithdrawal}
+                type="shop"
+                currentPage={currentPageShopAll}
+                setCurrentPage={setCurrentPageShopAll}
               />
             </>
           )}
