@@ -54,8 +54,7 @@ export default function ShopStatusToggle({ shopId, initialIsActive, onStatusChan
 
     return (
         <div className="flex items-center space-x-2">
-            {/* The ToastContainer is added here to display notifications globally within the component's scope. */}
-          
+            
             
             <PowerIcon className={`h-5 w-5 ${isActive ? 'text-green-400' : 'text-red-700'}`} />
             

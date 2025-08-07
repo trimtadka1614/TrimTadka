@@ -108,6 +108,20 @@ export default function AddWalkinBookingModal({ shopId, isOpen, onClose, onBooki
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
+            {/* <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+                toastClassName="custom-toast"
+                progressClassName="custom-progress"
+            /> */}
             <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 relative animate-scale-up">
                 <button
                     onClick={onClose}

@@ -76,9 +76,6 @@ export default function ShopEmployeesTable({ shopId }) {
             <div className="text-center py-8 text-gray-700 tracking-wider uppercase">
                 <BriefcaseIcon className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-lg font-medium">No Employees Found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                    It looks like you haven't registered any stylists yet.
-                </p>
                 <button
                     onClick={fetchEmployees}
                     className="mt-4 px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[#cb3a1e] hover:bg-[#a62b16] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#cb3a1e]"
@@ -92,6 +89,20 @@ export default function ShopEmployeesTable({ shopId }) {
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+           {/* <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+                toastClassName="custom-toast"
+                progressClassName="custom-progress"
+            /> */}
             <h3 className="text-xl font-bold text-[#cb3a1e] mb-4 flex items-center">
                 <UserIcon className="h-6 w-6 mr-2" /> Your Stylists
             </h3>

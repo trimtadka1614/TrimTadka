@@ -145,9 +145,7 @@ export default function ShopEmployeesTable({ shopId }) {
             <div className="text-center py-8 text-white tracking-wider uppercase">
                 <BriefcaseIcon className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-lg font-medium">No Employees Found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                    It looks like you haven't registered any stylists yet.
-                </p>
+                
             </div>
         );
     }
@@ -155,7 +153,20 @@ export default function ShopEmployeesTable({ shopId }) {
     return (
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 ">
             {/* Toast notifications container */}
-           
+            {/* <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+                toastClassName="custom-toast"
+                progressClassName="custom-progress"
+            /> */}
 
             {/* Delete confirmation modal */}
             {employeeToDelete && (
@@ -165,7 +176,7 @@ export default function ShopEmployeesTable({ shopId }) {
                             <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mb-4" />
                             <h3 className="text-xl font-bold text-gray-900 mb-2">Confirm Deletion</h3>
                             <p className="text-gray-700 mb-6">
-                                Are you sure you want to remove employee{' '}
+                                Are you sure you want to delete employee{' '}
                                 <span className="font-semibold">{employeeToDelete.emp_name}</span>?
                                 This action cannot be undone.
                             </p>
