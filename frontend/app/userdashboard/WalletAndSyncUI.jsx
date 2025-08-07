@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+
 
 import {
   Wallet,
@@ -22,7 +22,44 @@ import {
 } from "@heroicons/react/24/outline";
 
 // =============================================================
-//  Main Wallet UI Component
+// CashbackSuccessPopup Component (Updated)
+// =============================================================
+const CashbackSuccessPopup = ({ setShowCashbackPopup, cashbackAmount }) => {
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black bg-opacity-70 animate-fade-in">
+      <div className="relative bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center animate-scale-up">
+        <button
+          onClick={() => setShowCashbackPopup(false)}
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <div className="p-4 bg-emerald-100 rounded-full inline-block mb-4">
+          <Sparkles className="h-12 w-12 text-emerald-500 animate-pulse-slow" />
+        </div>
+        <h3 className="text-sm font-semibold text-emerald-600 mb-2 uppercase tracking-wider">Yaaayy! Congratulations!</h3>
+        <p className="text-gray-700 uppercase tracking-wider text-sm font-semibold mb-4">
+          You have received a cashback of
+        </p>
+        <p className="text-4xl font-extrabold text-emerald-700 mb-6">
+          <IndianRupee className="inline-block h-6 w-6" />{cashbackAmount}
+        </p>
+        <button
+          onClick={() => setShowCashbackPopup(false)}
+          className="w-full bg-emerald-600 text-white rounded-lg py-3 font-semibold uppercase tracking-wider hover:bg-emerald-700 transition-colors"
+        >
+          Awesome! Thanks!
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+
+// =============================================================
+// Main Wallet UI Component
 // =============================================================
 const WalletAndSyncUI = ({ customerId }) => {
   const [showWalletModal, setShowWalletModal] = useState(false);
@@ -30,7 +67,6 @@ const WalletAndSyncUI = ({ customerId }) => {
   const [isLoadingBalance, setIsLoadingBalance] = useState(true);
   const [errorBalance, setErrorBalance] = useState(null);
   
-  // New state to ensure the full sync runs only once per session
   const [hasSyncedOnce, setHasSyncedOnce] = useState(false);
 
   const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
@@ -42,27 +78,22 @@ const WalletAndSyncUI = ({ customerId }) => {
       return;
     }
 
-     try {
-  setIsLoadingBalance(true);
-  const response = await fetch(`${API_BASE_URL}/customers/${customerId}/wallet`);
+    try {
+      setIsLoadingBalance(true);
+      const response = await fetch(`${API_BASE_URL}/customers/${customerId}/wallet`);
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch wallet balance');
-  }
+      if (!response.ok) {
+        throw new Error('Failed to fetch wallet balance');
+      }
 
-  const data = await response.json();
+      const data = await response.json();
+      const totalBalance = data.wallet.transactions.reduce((accumulator, transaction) => {
+        return accumulator + transaction.balance;
+      }, 0); 
 
-  // The original code was using `data.wallet.current_balance`.
-  // This new code sums the `balance` property from each transaction.
-  const totalBalance = data.wallet.transactions.reduce((accumulator, transaction) => {
-    // We add the 'balance' value of the current transaction to the accumulator.
-    // The accumulator starts at 0, as defined by the second argument of reduce.
-    return accumulator + transaction.balance;
-  }, 0); // The '0' is the initial value of the accumulator.
-console.log("Total Balance:",totalBalance)
-  setWalletBalance(totalBalance);
-  setErrorBalance(null);
-} catch (err) {
+      setWalletBalance(totalBalance);
+      setErrorBalance(null);
+    } catch (err) {
       console.error('Error fetching wallet balance:', err);
       setErrorBalance('FAILED TO LOAD BALANCE.');
     } finally {
@@ -118,7 +149,8 @@ console.log("Total Balance:",totalBalance)
               </span>
             ) : (
               <span className="text-[10px] font-semibold text-white tracking-wide uppercase">
-                ₹{parseFloat(walletBalance).toFixed(2)}
+              ₹{Math.abs(parseFloat(walletBalance)).toFixed(2)}
+
               </span>
             )}
           </div>
@@ -130,30 +162,27 @@ console.log("Total Balance:",totalBalance)
           customerId={customerId}
           onClose={handleCloseWalletModal}
           onWalletUpdate={fetchWalletBalance}
-          // Pass the new state and setter to the modal
           hasSyncedOnce={hasSyncedOnce}
           setHasSyncedOnce={setHasSyncedOnce}
         />
       )}
+    
     </>
   );
 };
 
 // =============================================================
-//  Withdrawal Modal Component (Refactored to be self-contained)
+// Withdrawal Modal Component (Refactored to be self-contained)
 // =============================================================
 const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess, withdrawalAmount }) => {
   const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
   const [upiId, setUpiId] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const upiInputRef = useRef(null);
-
-  // UPI ID validation function
   const validateUpiId = (upiId) => {
     const upiPattern = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/;
     return upiPattern.test(upiId);
   };
-
   useEffect(() => {
     if (upiInputRef.current) {
       setTimeout(() => {
@@ -161,15 +190,12 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess, withdrawalAmo
       }, 100);
     }
   }, []);
-
   const handleWithdraw = async () => {
     if (!upiId.trim() || !validateUpiId(upiId.trim())) {
       toast.error('Please enter a valid UPI ID.');
       return;
     }
-
     setIsWithdrawing(true);
-
     try {
       const response = await fetch(`${API_BASE_URL}/api/withdraw-cashback`, {
         method: 'POST',
@@ -177,25 +203,18 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess, withdrawalAmo
         body: JSON.stringify({
           customer_id: customerId,
           upi_id: upiId.trim(),
-          withdrawalAmount: withdrawalAmount, // Pass the dynamic amount here
+          withdrawalAmount: withdrawalAmount,
         }),
       });
-
       const responseData = await response.json();
       if (!response.ok) {
         throw new Error(responseData.error || 'Failed to process withdrawal.');
       }
-
       toast.success('Withdrawal request submitted! Your funds will be processed shortly.');
-
-      // Call the success callback to trigger a refresh in the parent
       onWithdrawSuccess();
-
-      // Close the modal after a short delay
       setTimeout(() => {
         onClose();
       }, 500);
-
     } catch (err) {
       console.error('Withdrawal error:', err);
       toast.error(err.message || 'An unexpected error occurred.');
@@ -203,9 +222,7 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess, withdrawalAmo
       setIsWithdrawing(false);
     }
   };
-
   const isDisabled = isWithdrawing || !upiId.trim() || !validateUpiId(upiId.trim());
-
   return (
     <div className="absolute inset-0 bg-white z-20 flex flex-col p-5 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -274,7 +291,7 @@ const WithdrawalModal = ({ customerId, onClose, onWithdrawSuccess, withdrawalAmo
 
 
 // =============================================================
-//  Wallet Modal Component
+// Wallet Modal Component (Updated)
 // =============================================================
 const WalletModal = ({ customerId, onClose, onWalletUpdate, hasSyncedOnce, setHasSyncedOnce }) => {
   const [walletData, setWalletData] = useState(null);
@@ -282,62 +299,54 @@ const WalletModal = ({ customerId, onClose, onWalletUpdate, hasSyncedOnce, setHa
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showCashbackPopup, setShowCashbackPopup] = useState(false);
+  const [cashbackAmount, setCashbackAmount] = useState(0); // New state to hold the cashback amount
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [hasPendingWithdrawal, setHasPendingWithdrawal] = useState(false);
   
   const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
-  const TRANSACTIONS_PER_PAGE = 5;
+  const TRANSACTIONS_PER_PAGE = 7;
   
-  // New helper function to only fetch wallet data without syncing
-const fetchWalletDataOnly = useCallback(async () => {
-  if (!customerId) return;
-  setIsLoading(true);
-  setError(null);
+  const fetchWalletDataOnly = useCallback(async () => {
+    if (!customerId) return;
+    setIsLoading(true);
+    setError(null);
 
-  try {
-    const walletResponse = await fetch(`${API_BASE_URL}/customers/${customerId}/wallet`);
+    try {
+      const walletResponse = await fetch(`${API_BASE_URL}/customers/${customerId}/wallet`);
 
-    if (!walletResponse.ok) {
-      throw new Error('Failed to fetch wallet data');
+      if (!walletResponse.ok) {
+        throw new Error('Failed to fetch wallet data');
+      }
+
+      const data = await walletResponse.json();
+
+      const calculatedBalance = data.wallet.transactions.reduce((accumulator, transaction) => {
+        return accumulator + transaction.balance;
+      }, 0); 
+
+      const updatedWalletData = {
+        ...data.wallet,
+        current_balance: calculatedBalance,
+      };
+
+      setWalletData(updatedWalletData);
+
+      const isPending = data.wallet.transactions.some(tx => tx.status === 'Requested');
+      setHasPendingWithdrawal(isPending);
+
+    } catch (err) {
+      console.error('Error fetching wallet data:', err);
+      setError('FAILED TO LOAD WALLET DETAILS. PLEASE TRY AGAIN.');
+    } finally {
+      setIsLoading(false);
     }
-
-    const data = await walletResponse.json();
-
-    // Calculate the total balance by summing the 'balance' property of all transactions.
-    const calculatedBalance = data.wallet.transactions.reduce((accumulator, transaction) => {
-      // The reduce function iterates through each transaction in the array.
-      // It adds the 'balance' value of the current transaction to the accumulator.
-      return accumulator + transaction.balance;
-    }, 0); // The initial value of the accumulator is set to 0.
-
-    // Update the wallet data object with the newly calculated balance.
-    const updatedWalletData = {
-      ...data.wallet,
-      current_balance: calculatedBalance,
-    };
-
-    setWalletData(updatedWalletData);
-
-    // Check for pending withdrawals
-    const isPending = data.wallet.transactions.some(tx => tx.status === 'Requested');
-    setHasPendingWithdrawal(isPending);
-
-  } catch (err) {
-    console.error('Error fetching wallet data:', err);
-    setError('FAILED TO LOAD WALLET DETAILS. PLEASE TRY AGAIN.');
-  } finally {
-    setIsLoading(false);
-  }
-}, [customerId]);
-
+  }, [customerId]);
   
-  // The main function for the one-time sync and fetch
   const initialSyncAndFetch = useCallback(async () => {
     if (!customerId) return;
     setIsLoading(true);
     setError(null);
     try {
-      // Step 1: Trigger backend sync of completed bookings
       const syncResponse = await fetch(`${API_BASE_URL}/customers/${customerId}/sync-completed-bookings`, {
         method: 'PUT',
       });
@@ -345,8 +354,7 @@ const fetchWalletDataOnly = useCallback(async () => {
         throw new Error('Failed to sync bookings automatically');
       }
       
-      // Step 2: Trigger cashback check and creation
-      const cashbackCheckResponse = await fetch(`${API_BASE_URL}/api/check-cashback`, {
+      const cashbackCheckResponse = await fetch(`${API_BASE_URL}/api/check-customer-cashback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customer_id: customerId }),
@@ -354,15 +362,14 @@ const fetchWalletDataOnly = useCallback(async () => {
       const cashbackData = await cashbackCheckResponse.json();
       if (cashbackData.showCashbackPopup) {
         setShowCashbackPopup(true);
+        // Store the cashback amount from the API response
+        setCashbackAmount(cashbackData.cashbackAmount);
       }
       
-      // Step 3: Fetch the updated wallet data
       await fetchWalletDataOnly();
       
-      // Mark initial sync as complete in the parent component
       setHasSyncedOnce(true);
       
-      // Notify parent to update the balance display
       onWalletUpdate();
     } catch (err) {
       console.error('Error in sync and fetch process:', err);
@@ -371,204 +378,156 @@ const fetchWalletDataOnly = useCallback(async () => {
   }, [customerId, fetchWalletDataOnly, setHasSyncedOnce, onWalletUpdate]);
 
   useEffect(() => {
-    // Check the persistent state from the parent component
     if (hasSyncedOnce) {
-      // If we've already synced, just fetch the data
       fetchWalletDataOnly();
     } else {
-      // Otherwise, perform the full one-time sync and fetch
       initialSyncAndFetch();
     }
   }, [hasSyncedOnce, fetchWalletDataOnly, initialSyncAndFetch]);
   
   const handleWithdrawalSuccess = async () => {
-    // Optimistically set the state to pending to update the UI instantly
     setHasPendingWithdrawal(true);
-    // Then, fetch the latest data from the server to get the real status
     await fetchWalletDataOnly();
-    // Also, tell the parent component to refresh its balance display
     onWalletUpdate();
   }
   
- const TransactionTable = ({ transactions }) => {
-  // Sort the transactions array by id in descending order
-  const sortedTransactions = [...transactions].sort((a, b) => b.id - a.id);
-  
-  const totalTransactions = sortedTransactions.length;
-  const totalPages = Math.ceil(totalTransactions / TRANSACTIONS_PER_PAGE);
-  const startIndex = (currentPage - 1) * TRANSACTIONS_PER_PAGE;
-  const endIndex = startIndex + TRANSACTIONS_PER_PAGE;
-  const currentTransactions = sortedTransactions.slice(startIndex, endIndex);
+  const TransactionTable = ({ transactions }) => {
+    const sortedTransactions = [...transactions].sort((a, b) => b.id - a.id);
+    const totalTransactions = sortedTransactions.length;
+    const totalPages = Math.ceil(totalTransactions / TRANSACTIONS_PER_PAGE);
+    const startIndex = (currentPage - 1) * TRANSACTIONS_PER_PAGE;
+    const endIndex = startIndex + TRANSACTIONS_PER_PAGE;
+    const currentTransactions = sortedTransactions.slice(startIndex, endIndex);
 
-  const handlePreviousPage = () => {
-    setCurrentPage(prev => Math.max(prev - 1, 1));
-  };
+    const handlePreviousPage = () => {
+      setCurrentPage(prev => Math.max(prev - 1, 1));
+    };
 
-  const handleNextPage = () => {
-    setCurrentPage(prev => Math.min(prev + 1, totalPages));
-  };
+    const handleNextPage = () => {
+      setCurrentPage(prev => Math.min(prev + 1, totalPages));
+    };
 
-  const getFormattedAmount = (amount, status) => {
-    if (status === 'Received') {
-      return <span className="font-bold tracking-wider text-emerald-600">+₹{parseFloat(amount).toFixed(2)}</span>;
-    }
-    if (status === 'Withdrawn') {
-      return <span className="font-bold tracking-wider text-red-600">-₹{parseFloat(amount).toFixed(2)}</span>;
-    }
-    if (status === 'Paid') {
-      return <span className="font-bold tracking-wider text-red-600">-₹{parseFloat(amount).toFixed(2)}</span>;
-    }
-    if (status === 'Requested') {
-      return <span className="font-bold tracking-wider text-yellow-600">₹{parseFloat(amount).toFixed(2)}</span>;
-    }
-    if (status === 'Skipped') {
-      return <span className="font-bold tracking-wider text-yellow-600">₹{parseFloat(amount).toFixed(2)}</span>;
-    }
-    return <span>₹{parseFloat(amount).toFixed(2)}</span>;
-  };
+    const getFormattedAmount = (amount, status) => {
+      if (status === 'Received' || status === 'Refund') {
+        return <span className="font-bold tracking-wider text-emerald-600">+₹{parseFloat(amount).toFixed(2)}</span>;
+      }
+      if (status === 'Withdrawn' || status === 'Paid' || status === 'Requested') {
+        return <span className="font-bold tracking-wider text-red-600">-₹{parseFloat(amount).toFixed(2)}</span>;
+      }
+      return <span>₹{parseFloat(amount).toFixed(2)}</span>;
+    };
 
-  return (
-    <div className="mt-4">
-      <div className="overflow-x-auto border border-gray-200 rounded-lg">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-            <tr>
-              <th scope="col" className="px-4 py-3 text-left text-[10px] font-bold text-gray-700 uppercase tracking-wider">
-                DATE
-              </th>
-              <th scope="col" className="px-4 py-3 text-left text-[10px] font-bold text-gray-700 uppercase tracking-wider">
-                TYPE
-              </th>
-              <th scope="col" className="px-4 py-3 text-left text-[10px] font-bold text-gray-700 uppercase tracking-wider">
-                AMOUNT
-              </th>
-              <th scope="col" className="px-4 py-3 text-left text-[10px] font-bold text-gray-700 uppercase tracking-wider">
-                STATUS
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
-            {currentTransactions.length > 0 ? (
-              currentTransactions.map((tx) => (
-                <tr key={tx.id} className="hover:bg-gray-50 transition-colors duration-150">
-                  <td className="px-4 py-3 whitespace-nowrap text-xs font-medium text-gray-900 tracking-wide">
-                    {new Date(tx.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    {tx.type}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs">
-                    {getFormattedAmount(tx.amount, tx.status)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs">
-                    <span className={`px-2 py-1 inline-flex text-[10px] leading-4 font-bold rounded-full uppercase tracking-wider ${
-                      tx.status === 'Received'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : tx.status === 'Withdrawn'
-                          ? 'bg-red-100 text-red-800'
-                          : tx.status === 'Requested'
-                            ? 'bg-yellow-100 text-yellow-800 animate-pulse'
-                            : tx.status === 'Paid'
-                            ? 'bg-red-800 text-white animate-pulse'
-                            : 'bg-yellow-400 text-white'
-                    }`}>
-                      {tx.status}
-                    </span>
+    return (
+      <div className="mt-4">
+        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+              <tr>
+                <th scope="col" className="px-4 py-3 text-left text-[10px] font-bold text-gray-700 uppercase tracking-wider">
+                  DATE
+                </th>
+                <th scope="col" className="px-4 py-3 text-left text-[10px] font-bold text-gray-700 uppercase tracking-wider">
+                  TYPE
+                </th>
+                <th scope="col" className="px-4 py-3 text-left text-[10px] font-bold text-gray-700 uppercase tracking-wider">
+                  AMOUNT
+                </th>
+                <th scope="col" className="px-4 py-3 text-left text-[10px] font-bold text-gray-700 uppercase tracking-wider">
+                  STATUS
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {currentTransactions.length > 0 ? (
+                currentTransactions.map((tx) => (
+                  <tr key={tx.id} className="hover:bg-gray-50 transition-colors duration-150">
+                    <td className="px-4 py-3 whitespace-nowrap text-xs font-medium text-gray-900 tracking-wide">
+                      {new Date(tx.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      {tx.type}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs">
+                      {getFormattedAmount(tx.amount, tx.status)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs">
+                      <span className={`px-2 py-1 inline-flex text-[10px] leading-4 font-bold rounded-full uppercase tracking-wider ${
+                        tx.status === 'Received' || tx.status === 'Refund'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : tx.status === 'Withdrawn' || tx.status === 'Paid'
+                            ? 'bg-red-100 text-red-800'
+                            : tx.status === 'Requested'
+                              ? 'bg-yellow-100 text-yellow-800 animate-pulse'
+                              : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {tx.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="4" className="px-4 py-8 text-center">
+                    <div className="flex flex-col items-center space-y-2">
+                      <Receipt className="h-10 w-10 text-gray-300" />
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        NO TRANSACTIONS FOUND
+                      </p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider">
+                        YOUR TRANSACTION HISTORY WILL APPEAR HERE
+                      </p>
+                    </div>
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="4" className="px-4 py-8 text-center">
-                  <div className="flex flex-col items-center space-y-2">
-                    <Receipt className="h-10 w-10 text-gray-300" />
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      NO TRANSACTIONS FOUND
-                    </p>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wider">
-                      YOUR TRANSACTION HISTORY WILL APPEAR HERE
-                    </p>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-      {totalTransactions > TRANSACTIONS_PER_PAGE && (
-        <div className="flex items-center justify-between mt-4 px-2">
-          <div className="text-xs text-gray-600 font-medium tracking-wide">
-            SHOWING {startIndex + 1}-{Math.min(endIndex, totalTransactions)} OF {totalTransactions} TRANSACTIONS
+        {totalTransactions > TRANSACTIONS_PER_PAGE && (
+          <div className="flex items-center justify-between mt-4 px-2">
+            <div className="text-xs text-gray-600 font-medium tracking-wide">
+              SHOWING {startIndex + 1}-{Math.min(endIndex, totalTransactions)} OF {totalTransactions} TRANSACTIONS
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handlePreviousPage}
+                disabled={currentPage === 1}
+                className={`flex items-center p-2 text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors ${
+                  currentPage === 1
+                    ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                    : 'text-gray-700 bg-gray-200 hover:bg-gray-300'
+                }`}
+              >
+                <ChevronLeft className="h-3 w-3 mr-1" />
+              </button>
+              <span className="text-[10px] font-bold text-gray-700 px-2 tracking-wider">
+                {currentPage} OF {totalPages}
+              </span>
+              <button
+                onClick={handleNextPage}
+                disabled={currentPage === totalPages}
+                className={`flex items-center p-2 text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors ${
+                  currentPage === totalPages
+                    ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                    : 'text-gray-700 bg-gray-200 hover:bg-gray-300'
+                }`}
+              >
+                <ChevronRight className="h-3 w-3 ml-1" />
+              </button>
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handlePreviousPage}
-              disabled={currentPage === 1}
-              className={`flex items-center p-2 text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors ${
-                currentPage === 1
-                  ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                  : 'text-gray-700 bg-gray-200 hover:bg-gray-300'
-              }`}
-            >
-              <ChevronLeft className="h-3 w-3 mr-1" />
-            </button>
-            <span className="text-[10px] font-bold text-gray-700 px-2 tracking-wider">
-              {currentPage} OF {totalPages}
-            </span>
-            <button
-              onClick={handleNextPage}
-              disabled={currentPage === totalPages}
-              className={`flex items-center p-2 text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors ${
-                currentPage === totalPages
-                  ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                  : 'text-gray-700 bg-gray-200 hover:bg-gray-300'
-              }`}
-            >
-              <ChevronRight className="h-3 w-3 ml-1" />
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-  const CashbackSuccessPopup = () => {
-    return createPortal(
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black bg-opacity-70 animate-fade-in">
-        <div className="relative bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center animate-scale-up">
-          <button
-            onClick={() => setShowCashbackPopup(false)}
-            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <div className="p-4 bg-emerald-100 rounded-full inline-block mb-4">
-            <Sparkles className="h-12 w-12 text-emerald-500 animate-pulse-slow" />
-          </div>
-          <h3 className="text-sm font-semibold text-emerald-600 mb-2 uppercase tracking-wider">Yaaayy! Congratulations!</h3>
-          <p className="text-gray-700 uppercase tracking-wider text-sm font-semibold mb-4">
-            You have received a cashback of
-          </p>
-          <p className="text-4xl font-extrabold text-emerald-700 mb-6">
-            <IndianRupee className="inline-block h-6 w-6" />15
-          </p>
-          <button
-            onClick={() => setShowCashbackPopup(false)}
-            className="w-full bg-emerald-600 text-white rounded-lg py-3 font-semibold uppercase tracking-wider hover:bg-emerald-700 transition-colors"
-          >
-            Awesome! Thanks!
-          </button>
-        </div>
-      </div>,
-      document.body
+        )}
+      </div>
     );
   };
-
+  
   return createPortal(
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-70 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-scale-up">
+   <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center animate-fade-in">
+  <div className="w-full h-full bg-white rounded-none shadow-none overflow-auto animate-scale-up">
+    {/* Your modal content goes here */}
+  
+
         <div className="sticky top-0 bg-gradient-to-r from-emerald-500 to-green-600 p-5 flex items-center justify-between">
           <h2 className="text-xl uppercase tracking-wider font-bold text-white flex items-center">
             <Wallet className="h-6 w-6 mr-2" />
@@ -612,7 +571,8 @@ const fetchWalletDataOnly = useCallback(async () => {
                   CURRENT BALANCE
                 </p>
                 <p className="text-4xl font-extrabold text-emerald-600 tracking-wider">
-                  ₹{parseFloat(walletData.current_balance).toFixed(2)}
+                  ₹{Math.abs(parseFloat(walletData.current_balance)).toFixed(2)}
+
                 </p>
                 <div className="mt-3 flex items-center justify-center space-x-2">
                   <CheckCircle className="h-3 w-3 text-emerald-500" />
@@ -652,7 +612,7 @@ const fetchWalletDataOnly = useCallback(async () => {
           )}
 
           {showWithdrawForm && (
-           <WithdrawalModal
+            <WithdrawalModal
               customerId={customerId}
               onClose={() => setShowWithdrawForm(false)}
               onWithdrawSuccess={handleWithdrawalSuccess}
@@ -661,17 +621,15 @@ const fetchWalletDataOnly = useCallback(async () => {
           )}
         </div>
       </div>
-      {showCashbackPopup && <CashbackSuccessPopup />}
+      {showCashbackPopup && (
+        <CashbackSuccessPopup
+          setShowCashbackPopup={setShowCashbackPopup}
+          cashbackAmount={cashbackAmount}
+        />
+      )}
     </div>,
     document.body
   );
 };
 
 export default WalletAndSyncUI;
-
-
-
-
-
-
-

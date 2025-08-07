@@ -29,6 +29,11 @@ import {
   CalendarDaysIcon,
   SparklesIcon,
   StarIcon,
+  ReceiptPercentIcon,
+  LockClosedIcon,
+  CheckCircleIcon,
+  ShieldCheckIcon,
+  TagIcon
 } from "@heroicons/react/24/outline";
 import {
   LogOut,
@@ -54,6 +59,9 @@ const API_BASE_URL = 'https://trim-tadka-backend-phi.vercel.app';
 import axios from "axios";
 import WalletAndSyncUI from "./WalletAndSyncUI";
 import ShopCard from "./ShopCard";
+import ShopBanners from "./ShopBanner";
+import AdCard from "./AdCard";
+import ShopDetailsModal from "./ShopDetailsModal";
 
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radius of the Earth in km
@@ -67,7 +75,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const distance = R * c;
-  return distance * 1.2; // Apply scaling factor
+  return distance * 1.15; // Apply scaling factor
 }
 
 async function calculateDistance(lat1, lon1, lat2, lon2, retries = 3) {
@@ -99,7 +107,8 @@ async function calculateDistance(lat1, lon1, lat2, lon2, retries = 3) {
     return parseFloat(haversineDistance(lat1, lon1, lat2, lon2).toFixed(1));
   }
 }
-
+const searchQuery = ""; // Or a search query from state
+const isFetchingShops = false; // A state to manage loading status
 // === SearchBar component defined OUTSIDE UserDashboard ===
 function SearchBar({ searchQuery, setSearchQuery }) {
   const [isListening, setIsListening] = useState(false);
@@ -203,6 +212,7 @@ function SearchBar({ searchQuery, setSearchQuery }) {
   );
 }
 // === BookingModal Component ===
+
 function BookingModal({
   shopId,
   empId,
@@ -210,47 +220,77 @@ function BookingModal({
   services,
   onClose,
   onBookingComplete,
-  session // NEW: Accept the session object as a prop
+  session
 }) {
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
-  const [bookingMessage, setBookingMessage] = useState("");
-  const [isBookingLoading, setIsBookingLoading] = useState(false);
-  const [bookingErrorDetails, setBookingErrorDetails] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [bookingFeeAmount, setBookingFeeAmount] = useState(0);
+  const [originalFeeAmount, setOriginalFeeAmount] = useState(0);
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [isFeeLoading, setIsFeeLoading] = useState(true);
   const [isRazorpayReady, setIsRazorpayReady] = useState(false);
 
-  // Load Razorpay script on component mount
+  // Load Razorpay script
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.async = true;
-    script.onload = () => {
-      console.log("Razorpay script loaded successfully.");
-      setIsRazorpayReady(true);
-    };
+    script.onload = () => setIsRazorpayReady(true);
     script.onerror = () => {
-      console.error("Failed to load Razorpay script.");
-      toast.error("Failed to load payment gateway. Please try again later.");
+      toast.error("Payment gateway unavailable");
       setIsRazorpayReady(false);
     };
     document.body.appendChild(script);
-
-    return () => {
-      document.body.removeChild(script);
-    };
+    return () => document.body.removeChild(script);
   }, []);
 
-  const handleServiceChange = (serviceId) => {
-    setSelectedServiceIds((prevSelected) =>
-      prevSelected.includes(serviceId)
-        ? prevSelected.filter((id) => id !== serviceId)
-        : [...prevSelected, serviceId]
+  // Fetch booking fee
+  useEffect(() => {
+    const fetchBookingFee = async () => {
+      if (shopId && customerId > 0) {
+        setIsFeeLoading(true);
+        try {
+          const response = await axios.get(`${API_BASE_URL}/shops/${shopId}/booking-fee`);
+          setBookingFeeAmount(response.data.fee);
+          setDiscountPercent(response.data.discount_percent);
+          
+          if (response.data.discount_percent > 0) {
+            const originalFee = Math.round(response.data.fee / (1 - response.data.discount_percent / 100));
+            setOriginalFeeAmount(originalFee);
+          } else {
+            setOriginalFeeAmount(response.data.fee);
+          }
+        } catch (error) {
+          console.error("Error fetching booking fee:", error);
+          toast.error("Unable to fetch booking fee");
+          setBookingFeeAmount(0);
+          setOriginalFeeAmount(0);
+          setDiscountPercent(0);
+        } finally {
+          setIsFeeLoading(false);
+        }
+      } else {
+        setBookingFeeAmount(0);
+        setOriginalFeeAmount(0);
+        setDiscountPercent(0);
+        setIsFeeLoading(false);
+      }
+    };
+
+    fetchBookingFee();
+  }, [shopId, customerId]);
+
+  const handleServiceToggle = (serviceId) => {
+    setSelectedServiceIds(prev =>
+      prev.includes(serviceId)
+        ? prev.filter(id => id !== serviceId)
+        : [...prev, serviceId]
     );
   };
 
   const processBooking = async (bookingFeePaid) => {
-    setBookingMessage("");
-    setBookingErrorDetails("");
-    setIsBookingLoading(true);
+    setIsProcessing(true);
+    
     const payload = {
       shop_id: shopId,
       emp_id: empId,
@@ -272,299 +312,245 @@ function BookingModal({
       const data = await response.json();
 
       if (response.ok) {
-        const successMessage = data.message || "Booking created successfully!";
-        setBookingMessage(successMessage);
-        
-        toast.success(successMessage, {
-          position: "top-right",
-          autoClose: 4000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        });
-
+        toast.success("Booking confirmed successfully");
         onBookingComplete(true, data.booking);
-        
-        setTimeout(() => {
-          onClose();
-        }, 1000);
+        setTimeout(() => onClose(), 1000);
       } else {
-        const errorMessage = data.error || "Failed to create booking.";
-        const errorDetails = data.details || "";
-        
-        setBookingMessage(errorMessage);
-        setBookingErrorDetails(errorDetails);
-        
-        toast.error(
-          errorDetails 
-            ? `${errorMessage}: ${errorDetails}` 
-            : errorMessage,
-          {
-            position: "top-right",
-            autoClose: 5000,
-            hideProgressBar: false,
-            closeOnClick: true,
-            pauseOnHover: true,
-            draggable: true,
-          }
-        );
-
+        const errorMessage = data.error || "Booking failed";
+        toast.error(errorMessage);
         onBookingComplete(false, null, errorMessage);
       }
     } catch (error) {
-      const errorMessage = "An unexpected error occurred during booking.";
-      const networkError = "Network error or unexpected issue.";
-      
-      setBookingMessage(errorMessage);
-      setBookingErrorDetails(error.message);
-      
-      toast.error(`${errorMessage} Please check your connection and try again.`, {
-        position: "top-right",
-        autoClose: 5000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      });
-
-      onBookingComplete(false, null, networkError);
-      console.error("Booking fetch error:", error);
+      toast.error("Connection error. Please try again.");
+      onBookingComplete(false, null, "Network error");
+      console.error("Booking error:", error);
     } finally {
-      setIsBookingLoading(false);
+      setIsProcessing(false);
     }
   };
 
   const handlePayment = async () => {
     if (selectedServiceIds.length === 0) {
-      toast.error("Please select at least one service.", { autoClose: 3000 });
+      toast.error("Please select at least one service");
       return;
-    }
-    if (!isRazorpayReady || typeof window.Razorpay === 'undefined') {
-      toast.error("Payment gateway is not ready. Please try again in a moment.");
-      return;
-    }
-    // Check if session data is available
-    if (!session || !session.user || (!session.user.name && !session.user.phone)) {
-        toast.error("Customer details are missing from the session. Please log in again.");
-        return;
     }
 
-    setIsBookingLoading(true);
+    if (!isRazorpayReady || typeof window.Razorpay === 'undefined') {
+      toast.error("Payment gateway not ready");
+      return;
+    }
+
+    if (customerId <= 0) {
+      toast.error("Payment required for registered customers only");
+      return;
+    }
+
+    if (!session?.user?.name && !session?.user?.phone) {
+      toast.error("Customer details missing. Please log in again.");
+      return;
+    }
+
+    if (bookingFeeAmount <= 0) {
+      await processBooking(true);
+      return;
+    }
+
+    setIsProcessing(true);
 
     try {
-      const orderResponse = await axios.post(`${API_BASE_URL}/create-razorpay-order`, { amount: 300 });
+      const orderResponse = await axios.post(`${API_BASE_URL}/create-razorpay-order`, { shop_id: shopId });
       const { id: order_id, amount, currency } = orderResponse.data;
 
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         amount: amount,
         currency: currency,
-        name: "Salon Booking Fee",
-        description: "Booking Fees for your appointment",
+        name: "Booking Fee",
+        description: "Service booking confirmation fee",
         order_id: order_id,
-        handler: async (response) => {
-          await processBooking(true);
-        },
-        // Use the user's session data for prefill, with fallbacks
+        handler: async () => await processBooking(true),
         prefill: {
           name: session.user.name || "",
           contact: session.user.phone || "",
         },
-        notes: {
-          booking_fee: "3",
-        },
-        theme: {
-          color: "#cb3a1e",
-        },
+        theme: { color: "#1f2937" },
       };
 
-      const rzp1 = new window.Razorpay(options);
-      rzp1.on("payment.failed", (response) => {
-        toast.error("Payment failed. Please try again.");
-        setIsBookingLoading(false);
-        console.error("Razorpay error:", response.error);
+      const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", () => {
+        toast.error("Payment failed");
+        setIsProcessing(false);
       });
-      rzp1.open();
+      rzp.open();
     } catch (error) {
-      toast.error("Failed to create payment order. Please try again.");
-      setIsBookingLoading(false);
-      console.error("Error creating Razorpay order:", error);
+      toast.error("Unable to process payment");
+      setIsProcessing(false);
+      console.error("Payment error:", error);
     }
   };
 
-  const handleSkipFee = async () => {
-    if (selectedServiceIds.length === 0) {
-      toast.error("Please select at least one service.", { autoClose: 3000 });
-      return;
-    }
-    await processBooking(false); 
-  };
+  const totalSelectedServices = selectedServiceIds.length;
+  const isFormValid = totalSelectedServices > 0;
+  const isButtonDisabled = isProcessing || isFeeLoading || !isFormValid;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 animate-fade-in">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-scale-up">
-        <div className="sticky top-0 bg-white border-b border-[#cb3a1e] p-6 flex items-center justify-between">
-          <h2 className="text-2xl uppercase tracking-wider font-bold text-gray-900 flex items-center">
-            <CalendarDaysIcon className="h-7 w-7 mr-3 text-[#cb3a1e]" />
-            Book Your Service
-          </h2>
+    <div className="fixed  inset-0 bg-black backdrop-blur-sm flex items-center justify-center z-50 p-4 uppercase tracking-wider">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 pb-0  border-b border-gray-100">
+          <h2 className="text-xl font-bold text-gray-900">Book Service</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-            aria-label="Close booking modal"
+            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
           >
-            <XMarkIcon className="h-6 w-6" />
+            <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-6">
-          <p className="text-gray-700 mb-4 ">
-            Select the services you'd like to book with this stylist.
-          </p>
+        <div className="overflow-y-auto max-h-[calc(90vh-80px)]">
+          {/* Service Selection */}
+          <div className="p-6">
+            <p className="text-sm text-gray-600 mb-4">
+              Select services for your styling
+            </p>
 
-          {services && services.length > 0 ? (
-            <div className="space-y-3 mb-6">
-              {services.map((service) => (
-                <label
-                  key={service.service_id}
-                  className="flex items-center p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedServiceIds.includes(service.service_id)}
-                    onChange={() => handleServiceChange(service.service_id)}
-                    className="form-checkbox h-5 w-5 text-[#cb3a1e] rounded focus:ring-[#cb3a1e]"
-                  />
-                  <span className="ml-3 tracking-wider uppercase text-sm text-gray-800 font-medium flex-grow">
-                    {service.service_name}
-                  </span>
-                  <span className="text-gray-600 text-sm">
-                    ({service.service_duration_minutes} min)
-                  </span>
-                  {service.price && (
-                    <span className="ml-2 text-gray-900 font-semibold flex items-center">
-                      <CurrencyRupeeIcon className="h-4 w-4 mr-1" />
-                      {service.price}
+            {services && services.length > 0 ? (
+              <div className="space-y-2">
+                {services.map((service) => (
+                  <label
+                    key={service.service_id}
+                    className="flex items-center p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedServiceIds.includes(service.service_id)}
+                      onChange={() => handleServiceToggle(service.service_id)}
+                      className="w-4 h-4 text-gray-900 rounded border-gray-300 focus:ring-gray-900"
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-900">
+                          {service.service_name}
+                        </span>
+                        {service.price && (
+                          <span className="text-sm font-medium text-gray-900 flex items-center">
+                            <CurrencyRupeeIcon className="h-3 w-3" />
+                            {service.price}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center text-xs text-gray-500 mt-1">
+                        <ClockIcon className="h-3 w-3 mr-1" />
+                        {service.service_duration_minutes} minutes
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-500 py-8">
+                No services available
+              </p>
+            )}
+          </div>
+
+         {bookingFeeAmount > 0 && !isFeeLoading && (
+  <div className="flex flex-col justify-center text-[12px] text-gray-500  mt-[-10px] mb-[30px] mx-6 border-b pb-4 border-gray-300">
+    {/* Terms and Conditions with horizontal lines */}
+    <div className="flex items-center w-full mb-2">
+      <div className="flex-1 border-t border-gray-300"></div>
+      <span className="px-2 text-[12px] font-semibold text-black whitespace-nowrap">
+        Terms and Conditions apply
+      </span>
+      <div className="flex-1 border-t border-gray-300"></div>
+    </div>
+
+    {/* Points */}
+    <div className="flex flex-col items-start gap-y-1.5">
+      <div className="flex items-center font-medium">
+        <ShieldCheckIcon className="h-3 w-3 mr-1" />
+        Secure payment
+      </div>
+      <div className="font-medium">• Booking fees is non-refundable</div>
+      <div className="font-medium">• Refundable only if cancelled by shop</div>
+    </div>
+  </div>
+)}
+
+
+          {/* Payment Section */}
+          {customerId > 0 && totalSelectedServices > 0 && (
+            <div className="border-t border-gray-100 p-6 pt-0 mt-[-20px]">
+              <div className="bg-gray-50 rounded-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-gray-900 text-[12px]">Booking Fee -  ₹{bookingFeeAmount}</span>
+                  {discountPercent > 0 && (
+                    <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
+                      {discountPercent}% OFF
                     </span>
                   )}
-                </label>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-center py-4 tracking-wider uppercase">
-              No services available for this stylist.
-            </p>
-          )}
+                </div>
 
-          {customerId > 0 && selectedServiceIds.length > 0 && (
-            <div className="mt-6 border-t border-gray-200 pt-6">
-              <p className="text-gray-700 font-semibold flex items-center mb-4 tracking-wider uppercase">
-  <ReceiptIcon className="h-5 w-5 mr-2 text-[#cb3a1e] " />
-  Booking Fee: Pay or Skip
-</p>
-<p className="text-gray-500 text-sm mt-[-10px] tracking-wider uppercase leading-snug mb-4">
-  Skip fee is available for the first month as part of our launch offer. 
-  After one month, a minimal booking fee of <span className="font-bold text-[#cb3a1e]">₹3 - ₹5</span> will be mandatory.
-</p>
+                {isFeeLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-gray-900"></div>
+                    <span className="ml-2 text-sm text-gray-600">Calculating...</span>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    {discountPercent > 0 && originalFeeAmount > bookingFeeAmount ? (
+                      <div className="space-y-1">
+                        <span className="text-sm text-gray-500 line-through">₹{originalFeeAmount}</span>
+                        <div className="text-2xl font-bold text-gray-900 flex items-center justify-center">
+                          <CurrencyRupeeIcon className="h-5 w-5" />
+                          {bookingFeeAmount}
+                        </div>
+                        <p className="text-xs font-semibold text-green-600">Save ₹{originalFeeAmount - bookingFeeAmount}</p>
+                      </div>
+                    ) : (
+                      <div className="text-2xl font-bold text-gray-900 flex items-center justify-center">
+                        <CurrencyRupeeIcon className="h-5 w-5" />
+                        {bookingFeeAmount}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-              <div className="flex flex-col sm:flex-row gap-4">
                 <button
-  onClick={handlePayment}
-  className={`flex-1 bg-[#cb3a1e] text-white font-semibold py-3 px-4 rounded-lg hover:bg-[#a62b16] transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${isBookingLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-  disabled={isBookingLoading || !isRazorpayReady}
->
-  {isBookingLoading ? (
-    <>
-      <svg
-                          className="animate-spin h-5 w-5 text-white mr-3"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-      <span className="tracking-wider uppercase">Confirming Booking…</span>
-    </>
-  ) : (
-    <>
-      <CurrencyRupeeIcon className="h-5 w-5 mr-2" />
-      Pay ₹3
-    </>
-  )}
-</button>
+                  onClick={handlePayment}
+                  disabled={isButtonDisabled || !isRazorpayReady}
+                  className={`w-full mt-4 bg-gray-900 text-white font-medium py-3 px-4 rounded-lg transition-colors ${
+                    isButtonDisabled 
+                      ? 'opacity-50 cursor-not-allowed' 
+                      : 'hover:bg-gray-800'
+                  }`}
+                >
+                  {isProcessing ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                      Processing...
+                    </div>
+                  ) : bookingFeeAmount === 0 ? (
+                    "Confirm Booking"
+                  ) : (
+                    `Pay ₹${bookingFeeAmount}`
+                  )}
+                </button>
 
-<button
-  onClick={handleSkipFee}
-  className={`flex-1 bg-white text-[#cb3a1e] font-semibold py-3 px-4 border border-[#cb3a1e] rounded-lg hover:bg-[#fef2f2] transition-colors duration-200 flex items-center justify-center tracking-wider uppercase ${isBookingLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-  disabled={isBookingLoading}
->
-  {isBookingLoading ? (
-    <>
-      <svg
-                          className="animate-spin h-5 w-5 text-white mr-3"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-      <span className="tracking-wider uppercase">Confirming Booking…</span>
-    </>
-  ) : (
-    <>
-      <XCircleIcon className="h-5 w-5 mr-2" />
-      Skip Booking Fees
-    </>
-  )}
-</button>
+                
+
 
               </div>
-              <p className="text-gray-500 text-sm mt-3 tracking-wider uppercase">
-                Note: The booking fee is non-refundable.
-              </p>
             </div>
           )}
 
-          {bookingMessage && (
-            <div
-              className={`mt-4 p-3 rounded-md ${
-                bookingErrorDetails
-                  ? "bg-red-100 text-red-800"
-                  : "bg-green-100 text-green-800"
-              }`}
-            >
-              <p className="font-semibold">{bookingMessage}</p>
-              {bookingErrorDetails && (
-                <p className="text-sm mt-1">{bookingErrorDetails}</p>
-              )}
-            </div>
-          )}
+          
         </div>
       </div>
     </div>
   );
 }
+
 
 // === END BookingModal Component ===
 
@@ -640,6 +626,8 @@ function urlB64ToUint8Array(base64String) {
       return null;
     }
   }, []);
+
+
 
 
     const checkSubscriptionStatus = useCallback(async () => {
@@ -1038,6 +1026,13 @@ const fetchShops = useCallback(
     }
   }, []);
 
+
+    const onCloseShopDetailsModal = useCallback(() => {
+    setShowShopDetailsModal(false);
+    setSelectedShop(null);
+    setShopDetails(null);
+    setOpenBarberId(null);
+  }, []);
   // Function to handle booking cancellation
  const handleCancelBooking = async () => {
     if (!activeBooking || !session?.user?.id) {
@@ -1337,6 +1332,58 @@ const toggleStylistsExpansion = (shopId) => {
       })
     : [];
 
+const shopsWithinRange = filteredShops.filter(shop => shop.distance_from_you <= 4);
+const shopsOutsideRange = filteredShops.filter(shop => shop.distance_from_you > 4);
+
+const sortedShopsWithinRange = shopsWithinRange.sort((a, b) => {
+  // Priority 1: Top rated shops first
+  if (a.top_rated && !b.top_rated) return -1;
+  if (!a.top_rated && b.top_rated) return 1;
+
+  // Priority 2: Subscribed shops after top rated
+  if (a.is_subscribed && !b.is_subscribed) return -1;
+  if (!a.is_subscribed && b.is_subscribed) return 1;
+
+  return 0;
+});
+
+const sortedShops = [...sortedShopsWithinRange, ...shopsOutsideRange];
+
+
+// 3. Filter ads to include only those from shops within a 4km range
+const adsWithinRange = sortedShopsWithinRange.flatMap(shop =>
+  shop.ads.map(ad => ({ ...ad, shop_id: shop.shop_id, shop_name: shop.shop_name }))
+);
+
+
+// 4. Interleave ads into the sorted shop list
+const combinedList = [];
+let adIndex = 0;
+const adInterval = 3;
+
+sortedShops.forEach((shop, index) => {
+  combinedList.push({ type: 'shop', data: shop });
+  if ((index + 1) % adInterval === 0 && adIndex < adsWithinRange.length) {
+    combinedList.push({ type: 'ad', data: adsWithinRange[adIndex] });
+    adIndex++;
+  }
+});
+while (adIndex < adsWithinRange.length) {
+  combinedList.push({ type: 'ad', data: adsWithinRange[adIndex] });
+  adIndex++;
+}
+
+// 5. Setup references for scrolling to shops from ads
+const shopRefs = useRef({});
+const scrollToShop = (shopId) => {
+  const shopCard = shopRefs.current[shopId];
+  if (shopCard) {
+    shopCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+};
+
+
+
   const getStatusBadgeColor = (status) => {
     switch (status) {
       case "Available":
@@ -1373,6 +1420,8 @@ const toggleStylistsExpansion = (shopId) => {
     setBookingErrorDetails("");
     setBookingConfirmation(null);
   };
+
+
 
   // Callback function for when booking is complete (from BookingModal)
   const handleBookingComplete = (success, bookingData, errorMessage) => {
@@ -1629,15 +1678,15 @@ const toggleStylistsExpansion = (shopId) => {
   progressClassName="custom-progress"
 />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+        <div className="max-w-7xl mx-auto ">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <div className="lg:col-span-1 space-y-6">
               <div className="flex items-center justify-center lg:hidden">
-                <div className="text-center space-y-3">
-                  <h1 className="text-[#cb3a1e] text-3xl font-bold tracking-tighter">
+                 <div className="text-center space-y-3 mt-4">
+                  {/* <h1 className="text-[#cb3a1e] text-3xl font-bold tracking-tighter">
                     {session.user.name || session.user.phone}
-                  </h1>
-                  <div className="flex items-center justify-center space-x-1 text-sm tracking-wider uppercase">
+                  </h1> */}
+                  <div className="flex items-center justify-center space-x-1 text-sm tracking-wider uppercase mb-[-10px]">
                     <MapPinIcon className="h-5 w-5 text-[#cb3a1e]" />
                     <span className="text-white text-[15px] font-semibold">
                       {userCity}
@@ -1647,17 +1696,22 @@ const toggleStylistsExpansion = (shopId) => {
               </div>
 
 
-              <div className="mb-6 lg:mt-0">
-                <SearchBar
-                  searchQuery={searchQuery}
-                  setSearchQuery={setSearchQuery}
-                />
-              </div>
+            <div className="mb-[10px] lg:mt-0 px-4">
+  <SearchBar
+    searchQuery={searchQuery}
+    setSearchQuery={setSearchQuery}
+  />
+</div>
+
+{/* Conditionally render ShopBanners only if searchQuery is empty */}
+{searchQuery === '' && (
+  <ShopBanners shops={shops} userLocation={userLocation} />
+)}
 
              
             </div>
 
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-3 px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
               <div className=" md:mt-0 mt-[-30px] px-3 mb-4">
                 <div className="flex items-center justify-center w-full gap-4 mb-4">
                   <div className="flex-grow border-t border-white"></div>
@@ -1857,18 +1911,24 @@ const toggleStylistsExpansion = (shopId) => {
               )}
 
               {/* Show shops always, but disable booking button if active booking exists */}
-             {filteredShops.length === 0 && !isFetchingShops ? (
-  <div className="text-center py-12">
-    <p className="text-WHITE text-sm tracking-wider uppercase">
-      No barbershops found matching your search.
-    </p>
-  </div>
-) : (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-    {filteredShops.map((shop) => (
-      <ShopCard
-        key={shop.shop_id}
-        shop={shop}
+  {combinedList.length === 0 && !isFetchingShops ? (
+      <div className="text-center py-12">
+        <p className="text-gray-500 text-sm tracking-wider uppercase">
+          NO SHOPS FOUND MATCHING YOUR SEARCH.
+        </p>
+      </div>
+    ) : (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        {combinedList.map((item, index) => {
+          if (item.type === 'shop') {
+            const shop = item.data;
+            return (
+              <ShopCard
+                key={shop.shop_id}
+                shop={shop}
+                ref={el => (shopRefs.current[shop.shop_id] = el)}
+                 
+       
         expandedServicesShopId={expandedServicesShopId}
         expandedStylistsShopId={expandedStylistsShopId}
         isFetchingShopDetails={isFetchingShopDetails}
@@ -1876,230 +1936,40 @@ const toggleStylistsExpansion = (shopId) => {
         toggleStylistsExpansion={toggleStylistsExpansion}
         setSelectedShop={setSelectedShop}
         fetchShopDetails={fetchShopDetails}
-      />
-    ))}
-  </div>
-)}
-
+              />
+            );
+          } else {
+            const ad = item.data;
+            return (
+              <AdCard
+                key={`ad-${index}`}
+                ad={ad}
+                onClick={() => scrollToShop(ad.shop_id)}
+              />
+            );
+          }
+        })}
+      </div>
+    )}
             </div>
           </div>
         </div>
 
-        {showShopDetailsModal && shopDetails && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fade-in tracking-wider uppercase text-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto animate-scale-up">
-              <div className="sticky top-0 bg-white border-b border-[#cb3a1e] p-6 flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-                  <BuildingStorefrontIcon className="h-7 w-7 mr-3 text-[#cb3a1e]" />
-                  {shopDetails.shop_name}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowShopDetailsModal(false);
-                    setSelectedShop(null);
-                    setShopDetails(null);
-                    setOpenBarberId(null);
-                  }}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <XMarkIcon className="h-6 w-6" />
-                </button>
-              </div>
-
-              {isFetchingShopDetails ? (
-                <div className="flex flex-col items-center justify-center py-20">
-                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#cb3a1e] border-t-transparent mb-4"></div>
-                  <p className="text-sm font-medium text-[#cb3a1e]">
-                    Loading live queue data...
-                  </p>
-                </div>
-              ) : (
-                <div className="p-6">
-                  <div className="mb-6 space-y-2 text-gray-600">
-                    <p className="flex items-center">
-                      <MapPinIcon className="h-5 w-5 mr-2 text-[#cb3a1e]" />
-                      {shopDetails.location.address}
-                    </p>
-                    <p className="flex items-center">
-                      <PhoneIcon className="h-5 w-5 mr-2 text-[#cb3a1e]" />
-                      {shopDetails.ph_number}
-                    </p>
-                  </div>
-
-                  <h3 className="text-xl font-bold text-gray-900 mb-4">
-                    Our Stylists
-                  </h3>
-                  {shopDetails.barbers && shopDetails.barbers.length > 0 ? (
-                    <div className="space-y-4">
-                      {shopDetails.barbers.map((barber) => (
-                        <div
-                          key={barber.emp_id}
-                          className="border border-[#cb3a1e] rounded-lg overflow-hidden shadow-sm"
-                        >
-                          <button
-                            className="flex justify-between items-center w-full text-left p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
-                            onClick={() => {
-                              if (barber.is_active) {
-                                // Only allow opening if barber is active
-                                setOpenBarberId(
-                                  openBarberId === barber.emp_id
-                                    ? null
-                                    : barber.emp_id
-                                );
-                              }
-                            }}
-                            disabled={!barber.is_active} // Disable button if barber is not active
-                          >
-                            <div className="flex items-center space-x-3">
-                              <UserCircleIcon className="h-6 w-6 text-gray-600" />
-                              <h4 className="text-sm font-semibold uppercase text-gray-900">
-                                {barber.emp_name}
-                              </h4>
-                              {barber.is_active ? ( // Only show status badge if barber is active
-                                <span
-                                  className={`px-2 py-0.5 rounded-full text-[9px] tracking-wider uppercase font-medium ${getStatusBadgeColor(
-                                    barber.queue_info.current_status
-                                  )}`}
-                                >
-                                  {barber.queue_info.current_status}
-                                </span>
-                              ) : (
-                                <span className="ml-2 px-2 py-0.5 tracking-wider uppercase rounded-full text-[9px] font-medium bg-red-700 text-white">
-                                  Absent
-                                </span>
-                              )}
-                            </div>
-                            {barber.is_active ? ( // Show chevron icons only if barber is active
-                              openBarberId === barber.emp_id ? (
-                                <ChevronUpIcon className="h-5 w-5 text-gray-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-5 w-5 text-gray-600" />
-                              )
-                            ) : (
-                              // Optionally show a different icon or nothing if barber is absent
-                              <XCircleIcon className="h-5 w-5 text-gray-400" />
-                            )}
-                          </button>
-
-                          {openBarberId === barber.emp_id &&
-                            barber.is_active && ( // Only show details if barber is active AND expanded
-                              <div className="p-4 bg-white border-t border-gray-200 animate-fade-in-down">
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-2 gap-x-4 mb-4 text-gray-700 text-sm">
-                                  <p className="flex items-center font-medium">
-                                    <UsersIcon className="h-4 w-4 mr-2" />
-                                    Queue:{" "}
-                                    <span className="font-bold ml-1">
-                                      {
-                                        barber.queue_info
-                                          .total_people_in_queue
-                                      }
-                                    </span>
-                                  </p>
-                                  {barber.queue_info.your_queue_position !==
-                                    undefined &&
-                                    barber.queue_info.your_queue_position !==
-                                      null && (
-                                      <p className="flex items-center font-medium">
-                                        <HourglassIcon className="h-4 w-4 mr-2" />
-                                        Your Position:{" "}
-                                        <span className="font-bold ml-1">
-                                          {
-                                            barber.queue_info
-                                              .your_queue_position
-                                          }
-                                        </span>
-                                      </p>
-                                    )}
-                                  <p className="flex items-center font-medium">
-                                    <ClockIcon className="h-4 w-4 mr-2" />
-                                    Estimated Wait:{" "}
-                                    <span className="font-bold ml-1">
-                                      {barber.queue_info.estimated_wait_time}
-                                    </span>
-                                  </p>
-                                </div>
-
-                                <h5 className="font-semibold text-gray-900 mt-6 mb-3 text-base">
-                                  Services by {barber.emp_name}:
-                                </h5>
-                                {barber.services &&
-                                barber.services.length > 0 ? (
-                                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {barber.services.map((service) => (
-                                      <li
-                                        key={service.service_id}
-                                        className="flex items-center text-sm bg-gray-100 p-3 rounded-md"
-                                      >
-                                        <ScissorsIcon className="h-4 w-4 mr-2 text-gray-500" />
-                                        <span className="font-medium text-gray-800">
-                                          {service.service_name}
-                                        </span>
-                                        <span className="ml-auto flex items-center text-gray-700">
-                                          {service.service_duration_minutes}{" "}
-                                          mins
-                                          {service.price && (
-                                            <>
-                                              <CurrencyRupeeIcon className="h-4 w-4 ml-2 mr-0.5" />
-                                              {service.price}
-                                            </>
-                                          )}
-                                        </span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p className="text-gray-500 text-sm">
-                                    No services listed for this barber.
-                                  </p>
-                                )}
-
-                                <div className="mt-8 text-center">
-                                  <button
-                                    className={`px-6 py-3 rounded-lg font-bold transition-colors flex items-center justify-center mx-auto shadow-md tracking-wider uppercase text-sm
-                                                        ${
-                                                          activeBooking
-                                                            ? "bg-red-600 hover:bg-red-700 text-white"
-                                                            : "bg-green-600 hover:bg-green-700 text-white"
-                                                        }`}
-                                    onClick={() => handleJoinQueueClick(barber)}
-                                    disabled={activeBooking !== null}
-                                  >
-                                    {activeBooking ? (
-                                      <Scissors className="h-6 w-6 mr-2" />
-                                    ) : (
-                                      <WifiIcon className="h-6 w-6 mr-2" />
-                                    )}
-                                    {activeBooking
-                                      ? "Already Booked"
-                                      : "Join Queue Now"}
-                                  </button>
-
-                                  {activeBooking && (
-                                    <p className="text-[12px] text-red-600 mt-2">
-                                      You have an active booking. Please
-                                      complete it before booking another.
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-700 text-sm text-center mt-5">
-                      No barbers found for this shop...
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+       {showShopDetailsModal && shopDetails && !showBookingModal && (
+      <ShopDetailsModal
+        shopDetails={shopDetails}
+        onClose={onCloseShopDetailsModal} // Pass the new onClose function
+        isFetchingShopDetails={isFetchingShopDetails}
+        openBarberId={openBarberId}
+        setOpenBarberId={setOpenBarberId}
+        handleJoinQueueClick={handleJoinQueueClick}
+        activeBooking={activeBooking}
+      />
+    )}
         {showBookingModal &&
-          selectedBarberForBooking &&
-          session?.user?.id &&
-          selectedShop && (
+  selectedBarberForBooking &&
+  session?.user?.id &&
+  selectedShop && (
           <BookingModal
   shopId={selectedShop.shop_id}
   empId={selectedBarberForBooking.emp_id}
