@@ -278,7 +278,7 @@ const ShopBillingModal = ({ shopId, onSubscriptionSuccess }) => {
               ) : (
                 <>
                   {isSubscribed ? ( // Conditional rendering for subscribed shops
-                    <div className="py-12 text-center text-green-700 bg-green-50 ">
+                    <div className="py-12 text-center text-green-700  ">
                       <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500" />
                       <p className="text-lg font-bold uppercase tracking-wider mb-2">
                         YOU ARE ALREADY A SUBSCRIBED MEMBER!
@@ -391,3 +391,4 @@ const ShopBillingModal = ({ shopId, onSubscriptionSuccess }) => {
 };
 
 export default ShopBillingModal;
+
