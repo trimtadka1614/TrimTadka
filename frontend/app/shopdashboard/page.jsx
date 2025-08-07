@@ -50,7 +50,11 @@ import ShopStatusToggle from './ShopStatusToggle';
 import CancelBookingModal from './CancelBookingModal';
 import AddWalkinBookingModal from './AddWalkinBookingModal'; // Import the new modal
 import UploadShopImages from './ImageUpload';
-
+import EditTimeModal from './EditTimeModal';
+import ShopWalletAndSyncUI from './ShopWallet';
+import ShopFeeStatusSlider from './ShopFeeStatusSlider';
+import ShopBillingModal from './ShopBillingModel';
+import ShopPerksModal from './ShopPerksModal';
 
 export default function ShopDashboard() {
     const { data: session, status } = useSession();
@@ -450,6 +454,12 @@ useEffect(() => {
         setCurrentPage(1);
     };
 
+     const handleSubscriptionSuccess = () => {
+    console.log("Subscription successful! Refreshing shop data...");
+    // In a real app, you'd likely refetch shop data from your backend here
+    // fetchShopDetails(currentShopId);
+  };
+
     const handlePageChange = (pageNumber) => {
         setCurrentPage(pageNumber);
     };
@@ -666,7 +676,7 @@ if (totalQueueMinutes > 0) {
 
         {/* Notification Bell */}
         {shopId && (
-          <div className="flex flex-col items-center space-y-1 mt-[-5px]">
+          <div className="flex flex-col items-center space-y-1 ">
            <button
   onClick={isShopPushSubscribed ? unsubscribeShop : subscribeShop}
   className={`p-2 rounded-full transition-colors duration-200 ${
@@ -690,11 +700,19 @@ if (totalQueueMinutes > 0) {
             
           </div>
         )}
+ <ShopBillingModal
+          shopId={shopId}
+          onSubscriptionSuccess={handleSubscriptionSuccess}
+        />
+
+<ShopWalletAndSyncUI shopId={shopId}/>
+
+ <ShopPerksModal shopId={shopId} />
 
         {/* Logout Icon */}
            <button
       onClick={handleSignOut}
-      className={`p-2 bg-[#cb3a1e] hover:bg-[#a62b16] rounded-4xl mt-[-7px] ${
+      className={`p-2 bg-[#cb3a1e] hover:bg-[#a62b16] rounded-4xl  ${
         isSigningOut ? "cursor-not-allowed opacity-50" : ""
       }`}
       disabled={isSigningOut}
@@ -751,7 +769,7 @@ if (totalQueueMinutes > 0) {
  
 
  {/* Shop Status Toggle */}
-        <div className="flex justify-center mb-6 px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-center mb-2 px-4 sm:px-6 lg:px-8">
             {shopId && (
                 <ShopStatusToggle
                     shopId={shopId}
@@ -759,8 +777,12 @@ if (totalQueueMinutes > 0) {
                     onStatusChange={setShopIsActive} // Update local state when status changes
                 />
             )}
-        </div>
 
+           
+        </div>
+<div className="flex justify-center mb-2 px-4 sm:px-6 lg:px-8">
+            <ShopFeeStatusSlider shopId={shopId} />
+        </div>
             
         {/* 1. Register Barber, Add Services, Add Walk-in Booking Buttons */}
        <div className="grid grid-cols-2 gap-4 w-full mb-6 p-4">
@@ -950,13 +972,20 @@ if (totalQueueMinutes > 0) {
           </span>
 
           {/* Actions */}
-          <span className="w-[20%] text-right pr-2">
-            <CancelBookingModal
-              bookingId={booking.booking_id}
-              shopId={shopId}
-              onCancellationSuccess={() => fetchBookings()}
-            />
-          </span>
+        <div className="flex flex-col gap-y-2 ml-[20px]  pr-2">
+  {booking.status === 'in_service' && (
+    <EditTimeModal
+      booking={booking}
+      shopId={shopId}
+      onTimeUpdated={fetchBookings}
+    />
+  )}
+  <CancelBookingModal
+    bookingId={booking.booking_id}
+    shopId={shopId}
+    onCancellationSuccess={fetchBookings}
+  />
+</div>
         </li>
       ))}
     </ul>
