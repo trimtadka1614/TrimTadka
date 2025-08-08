@@ -480,8 +480,8 @@ function BookingModal({
 
           {/* Payment Section */}
           {customerId > 0 && totalSelectedServices > 0 && (
-            <div className="border-t border-gray-100 p-6 pt-0 mt-[-20px]">
-              <div className="bg-gray-50 rounded-xl">
+            <div className=" p-6 pt-0 mt-[-20px]">
+              <div className="bg-gray-50 p-2 rounded-xl">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-semibold text-gray-900 text-[12px]">Booking Fee -  ₹{bookingFeeAmount}</span>
                   {discountPercent > 0 && (
@@ -1995,4 +1995,5 @@ const scrollToShop = (shopId) => {
       `}</style>
     </div>
   );
+
 }
