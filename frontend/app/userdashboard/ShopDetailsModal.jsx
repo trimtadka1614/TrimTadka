@@ -55,7 +55,7 @@ export default function ShopDetailsModal({
       setCurrentImageIndex(
         (prevIndex) => (prevIndex + 1) % shopDetails.image_url.length
       );
-    }, 4000); // Slower transition for better viewing
+    }, 2000); // Slower transition for better viewing
     return () => clearInterval(interval);
   }, [shopDetails]);
 
@@ -400,3 +400,4 @@ export default function ShopDetailsModal({
     </div>
   );
 }
+
