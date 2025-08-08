@@ -2330,46 +2330,53 @@ app.get('/shops/:shop_id/subscription-plans', async (req, res) => {
 
 // --- POST /shops/:shop_id/create-razorpay-order ---
 // Creates a Razorpay order for the selected subscription plan.
+// --- POST /shops/:shop_id/create-razorpay-order ---
 app.post('/shops/:shop_id/create-razorpay-order', async (req, res) => {
-    console.log(`[POST /shops/:shop_id/create-razorpay-order] Request received for shop ID: ${req.params.shop_id}`); // Debugging log
+    console.log(`[POST /shops/:shop_id/create-razorpay-order] Request received for shop ID: ${req.params.shop_id}`);
     const shop_id = parseInt(req.params.shop_id);
     const { plan_id } = req.body;
 
-    console.log(`[POST /shops/:shop_id/create-razorpay-order] Payload: Shop ID: ${shop_id}, Plan ID: ${plan_id}`); // Debugging log
+    console.log(`[POST /shops/:shop_id/create-razorpay-order] Payload: Shop ID: ${shop_id}, Plan ID: ${plan_id}`);
 
     if (!Number.isInteger(shop_id) || shop_id <= 0) {
-        console.error(`[POST /shops/:shop_id/create-razorpay-order] Invalid shop ID provided: ${req.params.shop_id}`); // Debugging log
+        console.error(`[POST /shops/:shop_id/create-razorpay-order] Invalid shop ID provided: ${req.params.shop_id}`);
         return res.status(400).json({ error: 'Invalid shop ID.' });
     }
     if (!Number.isInteger(plan_id) || plan_id <= 0) {
-        console.error(`[POST /shops/:shop_id/create-razorpay-order] Invalid plan ID provided: ${plan_id}`); // Debugging log
+        console.error(`[POST /shops/:shop_id/create-razorpay-order] Invalid plan ID provided: ${plan_id}`);
         return res.status(400).json({ error: 'Invalid plan ID.' });
     }
 
-    let client; // Declare client here so it's accessible in finally block
+    let client;
     try {
         client = await pool.connect();
-        console.log(`[POST /shops/:shop_id/create-razorpay-order] Database client connected for shop ID: ${shop_id}`); // Debugging log
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Database client connected for shop ID: ${shop_id}`);
 
         // 1. Fetch the selected plan details
-        console.log(`[POST /shops/:shop_id/create-razorpay-order] Fetching plan details for plan ID: ${plan_id}`); // Debugging log
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Fetching plan details for plan ID: ${plan_id}`);
         const planResult = await client.query(`
             SELECT price, discount_percent FROM public.subscription_fees WHERE id = $1 AND season_active = TRUE;
         `, [plan_id]);
 
         if (planResult.rowCount === 0) {
-            console.warn(`[POST /shops/:shop_id/create-razorpay-order] Subscription plan not found or not active for plan ID: ${plan_id}`); // Debugging log
+            console.warn(`[POST /shops/:shop_id/create-razorpay-order] Subscription plan not found or not active for plan ID: ${plan_id}`);
             return res.status(404).json({ error: 'Subscription plan not found or not active.' });
         }
 
         const { price, discount_percent } = planResult.rows[0];
-        const finalAmount = price - (price * discount_percent / 100);
-        const amountInPaise = Math.round(finalAmount * 100); // Razorpay expects amount in smallest currency unit (paise)
+        const calculatedAmount = price - (price * discount_percent / 100);
+        
+        // FIXED: Round to nearest rupee first, then convert to paise
+        const roundedAmountInRupees = Math.round(calculatedAmount);
+        const amountInPaise = roundedAmountInRupees * 100;
 
-        console.log(`[POST /shops/:shop_id/create-razorpay-order] Plan details fetched: Price=${price}, Discount=${discount_percent}%, Final Amount=${finalAmount}, Amount in Paise=${amountInPaise}`); // Debugging log
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Plan details: Price=${price}, Discount=${discount_percent}%`);
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Calculated Amount=${calculatedAmount}`);
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Rounded Amount (₹)=${roundedAmountInRupees}`);
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Amount in Paise=${amountInPaise}`);
 
         // 2. Create Razorpay order
-        console.log(`[POST /shops/:shop_id/create-razorpay-order] Attempting to create Razorpay order...`); // Debugging log
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Attempting to create Razorpay order...`);
         const order = await razorpay.orders.create({
             amount: amountInPaise,
             currency: "INR",
@@ -2380,30 +2387,29 @@ app.post('/shops/:shop_id/create-razorpay-order', async (req, res) => {
                 subscription_type: 'shop'
             }
         });
-        console.log(`[POST /shops/:shop_id/create-razorpay-order] Razorpay order created successfully: ${order.id}`); // Debugging log
+        console.log(`[POST /shops/:shop_id/create-razorpay-order] Razorpay order created successfully: ${order.id}`);
 
+        // FIXED: Send the rounded amount instead of the exact Razorpay amount
         res.status(200).json({
             order_id: order.id,
-            amount: order.amount / 100, // Return amount in rupees
+            amount: roundedAmountInRupees, // Send rounded amount (30) not exact Razorpay amount (29.5)
             currency: order.currency,
-            key_id: process.env.RAZORPAY_KEY_ID // Send key_id to frontend for checkout
+            key_id: process.env.RAZORPAY_KEY_ID
         });
 
     } catch (error) {
-        console.error(`[POST /shops/:shop_id/create-razorpay-order] Error during Razorpay order creation for shop ${shop_id}:`, error.message); // Detailed error log
-        // If it's a Razorpay error, log the full error object for more details
+        console.error(`[POST /shops/:shop_id/create-razorpay-order] Error during Razorpay order creation for shop ${shop_id}:`, error.message);
         if (error.code && error.description) {
             console.error('Razorpay Error Details:', error);
         }
         res.status(500).json({ error: 'Failed to create Razorpay order: ' + error.message });
     } finally {
-        if (client) { // Ensure client exists before releasing
+        if (client) {
             client.release();
-            console.log(`[POST /shops/:shop_id/create-razorpay-order] Database client released for shop ID: ${shop_id}`); // Debugging log
+            console.log(`[POST /shops/:shop_id/create-razorpay-order] Database client released for shop ID: ${shop_id}`);
         }
     }
 });
-
 
 // Helper function to check subscription status and fetch current perks
 async function checkSubscriptionAndGetPerks(client, shop_id, res) {
