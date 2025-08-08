@@ -812,10 +812,10 @@ const ShopPerksModal = ({ shopId }) => {
                                   </p>
                                   <ul className="list-disc list-inside space-y-1">
                                     <li>
-                                      <span className="font-medium">IMAGES:</span> PORTRAIT ORIENTATION aspect ratio [2:3 or 4:5 ] • MAX 2MB • JPG, PNG, GIF, WEBP.
+                                      <span className="font-medium">IMAGES:</span> PORTRAIT ORIENTATION ASPECT RATIO [2:3 or 4:5 ] • MAX 2MB • JPG, PNG, GIF, WEBP.
                                     </li>
                                     <li>
-                                      <span className="font-medium">VIDEOS:</span> PORTRAIT ORIENTATION aspect ratio [2:3 or 4:5 ] • MAX 10MB • MP4, WEBM, MOV, AVI, QUICKTIME.
+                                      <span className="font-medium">VIDEOS:</span> PORTRAIT ORIENTATION ASPECT RATIO [2:3 or 4:5 ] • MAX 10MB • MP4, WEBM, MOV, AVI, QUICKTIME.
                                     </li>
                                   </ul>
                                 </div>
@@ -1097,7 +1097,7 @@ const ShopPerksModal = ({ shopId }) => {
                                   </p>
                                   <ul className="list-disc list-inside space-y-1">
                                     <li>
-                                      <span className="font-medium">IMAGES:</span> LANDSCAPE ORIENTATION aspect ratio [2:1] • MAX 2MB • JPG, PNG, GIF, WEBP.
+                                      <span className="font-medium">IMAGES:</span> LANDSCAPE ORIENTATION ASPECT RATIO [2:1] • MAX 2MB • JPG, PNG, GIF, WEBP.
                                     </li>
                                   </ul>
                                 </div>
