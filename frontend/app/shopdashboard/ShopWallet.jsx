@@ -244,12 +244,12 @@ const ShopWithdrawalModal = ({ shopId, onClose, onWithdrawSuccess, withdrawalAmo
             <li>9876543210@ybl</li>
           </ul>
         </div>
-        <div className="flex-grow"></div>
+        
         <button
           type="button"
           onClick={handleWithdraw}
           disabled={isDisabled}
-          className={`w-full py-3 rounded-xl font-bold uppercase tracking-wider flex items-center justify-center transition-all ${
+          className={`w-full py-3 rounded-xl mt-[20px] font-bold uppercase tracking-wider flex items-center justify-center transition-all ${
             isDisabled
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700'
@@ -576,3 +576,4 @@ const ShopWalletModal = ({ shopId, onClose, onWalletUpdate }) => {
 
 
 export default ShopWalletAndSyncUI;
+
