@@ -146,7 +146,7 @@ const ShopBillingModal = ({ shopId, onSubscriptionSuccess }) => {
         key: key_id, // Your Razorpay Key ID
         amount: finalPaymentAmount * 100, // Amount in paise, rounded for Razorpay's requirement
         currency: currency,
-        name: "SHOP SUBSCRIPTION",
+        name: "Shop Subscription",
         description: `SUBSCRIPTION FOR SHOP ID: ${shopId}`,
         order_id: order_id,
         handler: async function (response) {
@@ -391,4 +391,5 @@ const ShopBillingModal = ({ shopId, onSubscriptionSuccess }) => {
 };
 
 export default ShopBillingModal;
+
 
