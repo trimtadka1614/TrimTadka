@@ -280,7 +280,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="backdrop-blur-lg p-6 pt-0 sm:p-8 space-y-5 animate-slideInUp animation-delay-400">
-                    <div className="relative bg-white/20 backdrop-blur-sm p-1 rounded-2xl shadow-inner border border-white/30">
+                    <div className="relative bg-white/20 backdrop-blur p-1 rounded-2xl shadow-inner border border-white/30">
                         <div
                             className={`absolute top-1 bottom-1 bg-white rounded-xl shadow-lg transition-all duration-500 ease-out ${
                                 isCustomer ? 'left-1 right-1/2 mr-1' : 'right-1 left-1/2 ml-1'
@@ -310,12 +310,12 @@ export default function LoginPage() {
 
                     <form className="space-y-4" onSubmit={handleSubmit} ref={formRef}>
                         {errorMessage && (
-                            <div className="bg-red-500/20 backdrop-blur-sm border border-red-500/30 text-white px-4 py-3 rounded-xl animate-shake text-sm tracking-wider" role="alert">
+                            <div className="bg-red-500/20 backdrop-blur border border-red-500/30 text-white px-4 py-3 rounded-xl animate-shake text-sm tracking-wider" role="alert">
                                 <span className="block sm:inline">{errorMessage}</span>
                             </div>
                         )}
                         {successMessage && (
-                            <div className="bg-green-500/20 backdrop-blur-sm border border-green-500/30 text-white px-4 py-3 rounded-xl animate-pulse text-sm uppercase tracking-wider" role="alert">
+                            <div className="bg-green-500/20 backdrop-blur border border-green-500/30 text-white px-4 py-3 rounded-xl animate-pulse text-sm uppercase tracking-wider" role="alert">
                                 <span className="block sm:inline">{successMessage}</span>
                             </div>
                         )}
@@ -333,7 +333,7 @@ export default function LoginPage() {
                                                 required
                                                 value={customerName}
                                                 onChange={(e) => setCustomerName(e.target.value)}
-                                                className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider"
+                                                className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider"
                                                 placeholder="Your Name"
                                             />
                                         </div>
@@ -348,7 +348,7 @@ export default function LoginPage() {
                                                     required
                                                     value={shopName}
                                                     onChange={(e) => setShopName(e.target.value)}
-                                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider"
+                                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider"
                                                     placeholder="Shop Name"
                                                 />
                                             </div>
@@ -372,7 +372,7 @@ export default function LoginPage() {
                                                     readOnly
                                                     value={shopAddress}
                                                     onChange={(e) => setShopAddress(e.target.value)}
-                                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider"
+                                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider"
                                                     placeholder="Shop Address"
                                                 />
                                             </div>
@@ -386,7 +386,7 @@ export default function LoginPage() {
                                                     required
                                                     value={shopGender}
                                                     onChange={(e) => setShopGender(e.target.value)}
-                                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider appearance-none"
+                                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider appearance-none"
                                                 >
                                                     <option value="unisex" className="text-black">Unisex</option>
                                                     <option value="gents" className="text-black">Gents</option>
@@ -406,7 +406,7 @@ export default function LoginPage() {
                                                     required
                                                     value={shopType}
                                                     onChange={(e) => setShopType(e.target.value)}
-                                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider appearance-none"
+                                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold uppercase tracking-wider appearance-none"
                                                 >
                                                     <option value="economy" className="text-black">Economy</option>
                                                     <option value="mid" className="text-black">Mid-Range</option>
@@ -435,7 +435,7 @@ export default function LoginPage() {
                                             setPhoneNumber(value);
                                         }
                                     }}
-                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 uppercase tracking-wider hover:bg-white/20 text-sm sm:text-base font-semibold"
+                                    className="w-full pl-12 pr-4 py-2.5 sm:py-3 bg-white/10 backdrop-blur border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent transition-all duration-300 uppercase tracking-wider hover:bg-white/20 text-sm sm:text-base font-semibold"
                                     placeholder="Phone number"
                                     maxLength={10}
                                 />
@@ -450,7 +450,7 @@ export default function LoginPage() {
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full pl-12 pr-12 py-2.5 sm:py-3 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 uppercase tracking-wider focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold"
+                                    className="w-full pl-12 pr-12 py-2.5 sm:py-3 bg-white/10 backdrop-blur border border-white/30 rounded-xl placeholder-white/70 text-white focus:outline-none focus:ring-2 uppercase tracking-wider focus:ring-white/50 focus:border-transparent transition-all duration-300 hover:bg-white/20 text-sm sm:text-base font-semibold"
                                     placeholder="Password"
                                 />
                                 <button
