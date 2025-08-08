@@ -577,7 +577,7 @@ if (status === 'loading' || loading) {
 
     const totalBookings = summary?.total_bookings || 0;
     const completedBookings = summary?.status_breakdown?.completed || 0;
-    const cancelledBookings = summary?.status_breakdown?.cancelled || 0;
+    const cancelledBookings = (summary?.status_breakdown?.cancelled || 0) + (summary?.status_breakdown?.cancelled_by_shop || 0);
 
     const stylistCounts = bookings?.reduce((acc, booking) => {
       acc[booking.emp_name] = (acc[booking.emp_name] || 0) + 1;
@@ -1356,4 +1356,5 @@ const BookingDetailsModal = ({ booking, onClose }) => {
       </div>
     </div>
   );
+
 };
