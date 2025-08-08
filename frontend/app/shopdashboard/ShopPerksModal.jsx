@@ -587,7 +587,7 @@ const ShopPerksModal = ({ shopId }) => {
 
             <div className="overflow-y-auto max-h-[calc(90vh-100px)] p-4">
               {isLoading ? (
-                <div className="py-12 flex flex-col items-center justify-center text-gray-600">
+                <div className="py-12 flex flex-col items-center justify-center text-gray-600 min-h-screen">
                   <div className="relative">
                     <Loader className="animate-spin mb-3 h-10 w-10 text-blue-500" />
                     <div className="absolute inset-0 h-10 w-10 border-4 border-blue-200 rounded-full animate-pulse"></div>
@@ -997,5 +997,6 @@ const ShopPerksModal = ({ shopId }) => {
     </>
   );
 };
+
 
 export default ShopPerksModal;
