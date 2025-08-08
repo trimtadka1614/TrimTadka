@@ -133,7 +133,7 @@ const ShopFeeStatusSlider = ({ shopId }) => {
       {isLoading ? (
         <div className="flex items-center justify-center py-2"> {/* Adjusted padding */}
           <Loader className="animate-spin h-5 w-5 text-indigo-500 mr-2" /> {/* Smaller loader */}
-          <span className="text-sm text-gray-600">Loading Status...</span> {/* Smaller text */}
+          <span className="text-sm text-white uppercase tracking-wider">updating...</span> 
         </div>
       ) : error ? (
         <div className="text-red-600 text-center py-2"> {/* Adjusted padding */}
@@ -180,3 +180,4 @@ const ShopFeeStatusSlider = ({ shopId }) => {
 };
 
 export default ShopFeeStatusSlider;
+
