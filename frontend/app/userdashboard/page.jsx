@@ -1705,7 +1705,7 @@ const scrollToShop = (shopId) => {
 
 {/* Conditionally render ShopBanners only if searchQuery is empty */}
 {searchQuery === '' && (
-  <ShopBanners shops={shops} userLocation={userLocation} />
+  <ShopBanners shops={shops} userLocation={userLocation} scrollToShop={scrollToShop} />
 )}
 
              
@@ -1997,3 +1997,4 @@ const scrollToShop = (shopId) => {
   );
 
 }
+
