@@ -78,7 +78,7 @@ const getShopTypeDisplay = (type) => {
     case 'mid':
       return { text: 'Quality Service', color: 'bg-[#1A5276]' };
     case 'economy':
-      return { text: 'Economy & budget friendly', color: 'bg-gray-600' };
+      return { text: 'Budget friendly', color: 'bg-gray-600' };
     default:
       return { text: 'Salon', color: 'bg-gray-500' };
   }
@@ -394,3 +394,4 @@ const ShopCard = forwardRef(({
 });
 
 export default ShopCard;
+
