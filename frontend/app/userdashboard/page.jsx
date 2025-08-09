@@ -1332,8 +1332,8 @@ const toggleStylistsExpansion = (shopId) => {
       })
     : [];
 
-const shopsWithinRange = filteredShops.filter(shop => shop.distance_from_you <= 4);
-const shopsOutsideRange = filteredShops.filter(shop => shop.distance_from_you > 4);
+const shopsWithinRange = filteredShops.filter(shop => shop.distance_from_you <= 6);
+const shopsOutsideRange = filteredShops.filter(shop => shop.distance_from_you > 6);
 
 const sortedShopsWithinRange = shopsWithinRange.sort((a, b) => {
   // Priority 1: Top rated shops first
@@ -1997,4 +1997,5 @@ const scrollToShop = (shopId) => {
   );
 
 }
+
 
