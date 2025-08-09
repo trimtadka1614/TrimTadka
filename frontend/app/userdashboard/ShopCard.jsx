@@ -116,7 +116,7 @@ const ShopCard = forwardRef(({
     if (!hasImageUrl || shop.image_url.length <= 1) return;
     const interval = setInterval(() => {
       setActiveImageIndex((prevIndex) => (prevIndex + 1) % shop.image_url.length);
-    }, 3000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [hasImageUrl, shop.image_url]);
 
@@ -125,7 +125,7 @@ const ShopCard = forwardRef(({
     if (!hasOffers || shop.offers.length <= 1) return;
     const interval = setInterval(() => {
       setActiveOfferIndex((prevIndex) => (prevIndex + 1) % shop.offers.length);
-    }, 4000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [hasOffers, shop.offers]);
 
@@ -394,4 +394,5 @@ const ShopCard = forwardRef(({
 });
 
 export default ShopCard;
+
 
